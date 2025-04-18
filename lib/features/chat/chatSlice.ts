@@ -1,42 +1,73 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit"
-import type { RootState } from "../../store"
+// features/chat/chatSlice.ts
 
-// Define types for our state
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import type { RootState } from "../../store";
+
+/* -------------------------------------------------------------------------- */
+/*                                   TYPES                                    */
+/* -------------------------------------------------------------------------- */
+
 export interface User {
-  name: string
-  tag: string
+  id?: number;
+  name: string;
+  tag: string;
 }
 
 export interface Message {
-  id: number
-  roomId: number
-  sender: string
-  content: string
-  timestamp: string
-  isUser: boolean
+  id: number;
+  roomId: number;
+  sender: string;
+  content: string;
+  timestamp: string; // ISO‑8601 string
+  isUser: boolean;
 }
 
 export interface Room {
-  id: number
-  name: string
-  unread: number
-  type: "group" | "direct"
-  members: string[]
-  directUser?: User
+  id: number;
+  name: string;
+  unread: number;
+  type: "group" | "direct";
+  members: string[];
+  directUser?: User;
 }
 
 interface ChatState {
-  socket: WebSocket | null
-  connected: boolean
-  connecting: boolean
-  rooms: Room[]
-  messages: Message[]
-  activeRoom: number | null
-  currentUser: User | null
-  error: string | null
+  socket: WebSocket | null;
+  connected: boolean;
+  connecting: boolean;
+  rooms: Room[];
+  messages: Message[];
+  activeRoom: number | null;
+  error: string | null;
 }
 
-// Initial state
+/* -------------------------------------------------------------------------- */
+/*                           ENV & HELPER CONSTANTS                           */
+/* -------------------------------------------------------------------------- */
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+// Convert http://host:8080/api → ws://host:8080/ws
+
+//Prod version
+// const WS_URL = API_BASE.replace(/^http/, "ws").replace(/\/api$/, "/ws");
+
+//Test version
+const wsUrl = (state: RootState) => {
+  const base = API_BASE.replace(/^http/, "ws").replace(/\/api$/, "/ws");
+  const uid = (state as any).auth.user?.id || 0; // 0‑guest fallback
+  return `${base}?user_id=${uid}`;
+};
+
+const authHeaders = (state: RootState): HeadersInit => {
+  const token = (state as any).auth?.token as string | undefined;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/* -------------------------------------------------------------------------- */
+/*                               INITIAL STATE                                */
+/* -------------------------------------------------------------------------- */
+
 const initialState: ChatState = {
   socket: null,
   connected: false,
@@ -44,276 +75,290 @@ const initialState: ChatState = {
   rooms: [],
   messages: [],
   activeRoom: null,
-  currentUser: null,
   error: null,
+};
+
+/* -------------------------------------------------------------------------- */
+/*                              HELPER FUNCTIONS                              */
+/* -------------------------------------------------------------------------- */
+
+function deserializeMessage(raw: any, fallbackSender = "unknown"): Message {
+  return {
+    id: raw.id,
+    roomId: raw.room_id ?? raw.roomId,
+    sender: raw.sender ?? fallbackSender,
+    content: raw.content,
+    timestamp: raw.timestamp ?? raw.created_at ?? new Date().toISOString(),
+    isUser: false,
+  };
 }
 
-// WebSocket connection thunk
-export const connectWebSocket = createAsyncThunk("chat/connectWebSocket", async (_, { dispatch, getState }) => {
-  const state = getState() as RootState
+/* -------------------------------------------------------------------------- */
+/*                                 THUNKS                                     */
+/* -------------------------------------------------------------------------- */
 
-  // Close existing connection if any
-  if (state.chat.socket) {
-    state.chat.socket.close()
-  }
+// ----------------------------- WebSocket ----------------------------------
+// export const connectWebSocket = createAsyncThunk<
+//   WebSocket,
+//   void,
+//   { state: RootState }
+// >("chat/connectWebSocket", async (_, { dispatch }) => {
+//   return new Promise<WebSocket>((resolve, reject) => {
+//     const ws = new WebSocket(WS_URL);
 
-  // For demo purposes, we'll simulate WebSocket behavior instead of connecting to a real server
-  // This avoids issues with echo servers or other test WebSocket endpoints
-  const mockWebSocket = {
-    send: (data: string) => {
-      try {
-        // Parse the sent data
-        const parsedData = JSON.parse(data)
-
-        // Simulate server response after a short delay
-        setTimeout(() => {
-          if (mockWebSocket.onmessage) {
-            // Echo back the same data as a proper JSON string
-            mockWebSocket.onmessage({ data: JSON.stringify(parsedData) } as MessageEvent)
-          }
-        }, 500)
-      } catch (error) {
-        console.error("Error parsing message to send:", error)
-      }
-    },
-    close: () => {
-      if (mockWebSocket.onclose) {
-        mockWebSocket.onclose({} as CloseEvent)
-      }
-    },
-    onopen: null as ((event: Event) => void) | null,
-    onclose: null as ((event: CloseEvent) => void) | null,
-    onerror: null as ((event: Event) => void) | null,
-    onmessage: null as ((event: MessageEvent) => void) | null,
-  }
-
-  // Simulate connection delay
+//Test version
+export const connectWebSocket = createAsyncThunk<
+  WebSocket,
+  void,
+  { state: RootState }
+>("chat/connectWebSocket", async (_, { dispatch, getState }) => {
   return new Promise<WebSocket>((resolve, reject) => {
-    setTimeout(() => {
-      if (mockWebSocket.onopen) {
-        mockWebSocket.onopen({} as Event)
+    const ws = new WebSocket(wsUrl(getState())); // ← use helper
+    /* -------------------------------------------------------------------------- */
+    ws.onopen = () => resolve(ws);
+    ws.onerror = () => reject(new Error("WebSocket connection error"));
+
+    ws.onmessage = (evt) => {
+      try {
+        const { type, payload } = JSON.parse(evt.data) as {
+          type: string;
+          payload: any;
+        };
+        switch (type) {
+          case "message":
+            dispatch(receiveMessage(deserializeMessage(payload)));
+            break;
+          case "room_created":
+            dispatch(addRoom(payload as Room));
+            break;
+          case "room_updated":
+            dispatch(updateRoom(payload as Room));
+            break;
+          default:
+            break; // ignore other event types for now
+        }
+      } catch (err) {
+        console.error("WS parse error", err);
       }
-      resolve(mockWebSocket as unknown as WebSocket)
-    }, 1000)
-  })
-})
+    };
 
-// Send message thunk
-export const sendMessage = createAsyncThunk(
-  "chat/sendMessage",
-  async (message: { roomId: number; content: string }, { getState, dispatch }) => {
-    const state = getState() as RootState
-    const { socket, currentUser } = state.chat
+    ws.onclose = () => dispatch(setConnected(false));
+  });
+});
 
-    if (!socket || !currentUser) {
-      throw new Error("WebSocket not connected or user not set")
-    }
+// ------------------------------- Rooms ------------------------------------
+export const fetchRooms = createAsyncThunk<Room[], void, { state: RootState }>(
+  "chat/fetchRooms",
+  async (_, { getState }) => {
+    const res = await fetch(`${API_BASE}/rooms`, {
+      headers: authHeaders(getState()),
+    });
+    if (!res.ok) throw new Error("Failed to fetch rooms");
 
-    const newMessage = {
-      id: Date.now(),
-      roomId: message.roomId,
-      sender: "You",
-      content: message.content,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isUser: true,
-    }
+    // Backend returns { rooms: [{ lastReadAt, room: {...}, unreadCount }, ...] }
+    const json = (await res.json()) as {
+      rooms: Array<{
+        lastReadAt: string;
+        room: {
+          id: number;
+          name: string;
+          created_by: number;
+          created_at: string;
+          updated_at: string;
+        };
+        unreadCount: number;
+      }>;
+    };
 
-    // Send the message to the server
-    socket.send(
-      JSON.stringify({
-        type: "message",
-        payload: newMessage,
-      }),
-    )
-
-    // Optimistically add the message to the state
-    dispatch(addMessage(newMessage))
-
-    return newMessage
-  },
-)
-
-// Create room thunk
-export const createRoom = createAsyncThunk(
-  "chat/createRoom",
-  async (room: { name: string; type: "group" | "direct"; directUser?: User }, { getState, dispatch }) => {
-    const state = getState() as RootState
-    const { socket } = state.chat
-
-    if (!socket) {
-      throw new Error("WebSocket not connected")
-    }
-
-    const newRoom = {
-      id: Date.now(),
-      name: room.name,
-      unread: 0,
-      type: room.type,
+    // Map to client Room[] shape
+    return json.rooms.map((entry) => ({
+      id: entry.room.id,
+      name: entry.room.name,
+      unread: entry.unreadCount,
+      type: "group",
       members: [],
-      directUser: room.directUser,
-    }
+      directUser: undefined,
+    }));
+  }
+);
 
-    // Send the room creation to the server
-    socket.send(
-      JSON.stringify({
-        type: "create_room",
-        payload: newRoom,
-      }),
-    )
+export const createRoom = createAsyncThunk<
+  Room,
+  { name: string; userIds?: number[] },
+  { state: RootState }
+>("chat/createRoom", async ({ name, userIds }, { getState }) => {
+  const res = await fetch(`${API_BASE}/rooms`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(getState()),
+    },
+    body: JSON.stringify({ name, user_ids: userIds ?? [] }),
+  });
+  if (!res.ok) throw new Error("Failed to create room");
+  // unwrap created room
+  const data = (await res.json()) as { room?: Room; rooms?: Room[] };
+  return (data.room ?? data.rooms?.[0] ?? data) as Room;
+});
 
-    // Optimistically add the room to the state
-    dispatch(addRoom(newRoom))
+// ------------------------------ Invites -----------------------------------
+export const inviteUser = createAsyncThunk<
+  Room,
+  { roomId: number; username: string },
+  { state: RootState }
+>("chat/inviteUser", async ({ roomId, username }, { getState }) => {
+  const res = await fetch(`${API_BASE}/invites`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(getState()),
+    },
+    body: JSON.stringify({ room_id: roomId, username }),
+  });
+  if (!res.ok) throw new Error("Failed to invite user");
+  const data = (await res.json()) as { room?: Room; [key: string]: any };
+  return (data.room ?? data) as Room;
+});
 
-    return newRoom
-  },
-)
+// ----------------------------- Messages -----------------------------------
+export const fetchMessages = createAsyncThunk<
+  { roomId: number; messages: Message[] },
+  number,
+  { state: RootState }
+>("chat/fetchMessages", async (roomId, { getState }) => {
+  const res = await fetch(`${API_BASE}/messages?room_id=${roomId}`, {
+    headers: authHeaders(getState()),
+  });
+  if (!res.ok) throw new Error("Failed to fetch messages");
+  const data = await res.json();
+  return { roomId, messages: data.map(deserializeMessage) };
+});
 
-// Invite users thunk
-export const inviteUsers = createAsyncThunk(
-  "chat/inviteUsers",
-  async ({ roomId, users }: { roomId: number; users: string[] }, { getState, dispatch }) => {
-    const state = getState() as RootState
-    const { socket, rooms } = state.chat
+export const sendMessage = createAsyncThunk<
+  Message,
+  { roomId: number; content: string },
+  { state: RootState }
+>("chat/sendMessage", async ({ roomId, content }, { getState }) => {
+  const state = getState();
+  const currentUser = (state as any).auth.user as User | null;
 
-    if (!socket) {
-      throw new Error("WebSocket not connected")
-    }
+  const res = await fetch(`${API_BASE}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(state),
+    },
+    body: JSON.stringify({ room_id: roomId, content }),
+  });
+  if (!res.ok) throw new Error("Failed to send message");
+  const raw = await res.json();
+  return { ...deserializeMessage(raw, currentUser?.name), isUser: true };
+});
 
-    const room = rooms.find((r) => r.id === roomId)
-    if (!room) {
-      throw new Error("Room not found")
-    }
+/* -------------------------------------------------------------------------- */
+/*                                   SLICE                                    */
+/* -------------------------------------------------------------------------- */
 
-    const updatedRoom = {
-      ...room,
-      members: [...room.members, ...users],
-    }
-
-    // Send the invite to the server
-    socket.send(
-      JSON.stringify({
-        type: "invite_users",
-        payload: {
-          roomId,
-          users,
-        },
-      }),
-    )
-
-    // Optimistically update the room in the state
-    dispatch(updateRoom(updatedRoom))
-
-    return updatedRoom
-  },
-)
-
-// Create the slice
 const chatSlice = createSlice({
   name: "chat",
   initialState,
   reducers: {
-    setSocket: (state, action: PayloadAction<WebSocket | null>) => {
-      state.socket = action.payload
+    setConnected(state, action: PayloadAction<boolean>) {
+      state.connected = action.payload;
+      state.connecting = false;
     },
-    setConnected: (state, action: PayloadAction<boolean>) => {
-      state.connected = action.payload
-      state.connecting = false
+    setActiveRoom(state, action: PayloadAction<number>) {
+      state.activeRoom = action.payload;
+      state.rooms = state.rooms.map((r) =>
+        r.id === action.payload ? { ...r, unread: 0 } : r
+      );
     },
-    setCurrentUser: (state, action: PayloadAction<User>) => {
-      state.currentUser = action.payload
+    addRoom(state, action: PayloadAction<Room>) {
+      state.rooms.push(action.payload);
     },
-    setActiveRoom: (state, action: PayloadAction<number>) => {
-      state.activeRoom = action.payload
-
-      // Mark messages as read
-      if (state.rooms.length > 0) {
-        state.rooms = state.rooms.map((room) => (room.id === action.payload ? { ...room, unread: 0 } : room))
+    updateRoom(state, action: PayloadAction<Room>) {
+      state.rooms = state.rooms.map((r) =>
+        r.id === action.payload.id ? action.payload : r
+      );
+    },
+    receiveMessage(state, action: PayloadAction<Message>) {
+      state.messages.push(action.payload);
+      if (state.activeRoom !== action.payload.roomId) {
+        state.rooms = state.rooms.map((r) =>
+          r.id === action.payload.roomId ? { ...r, unread: r.unread + 1 } : r
+        );
       }
-    },
-    addMessage: (state, action: PayloadAction<Message>) => {
-      state.messages.push(action.payload)
-
-      // Increment unread count if not the active room
-      if (state.activeRoom !== action.payload.roomId && !action.payload.isUser) {
-        state.rooms = state.rooms.map((room) =>
-          room.id === action.payload.roomId ? { ...room, unread: room.unread + 1 } : room,
-        )
-      }
-    },
-    receiveMessage: (state, action: PayloadAction<Message>) => {
-      // Only add if not already in the messages array
-      if (!state.messages.some((msg) => msg.id === action.payload.id)) {
-        state.messages.push(action.payload)
-
-        // Increment unread count if not the active room
-        if (state.activeRoom !== action.payload.roomId) {
-          state.rooms = state.rooms.map((room) =>
-            room.id === action.payload.roomId ? { ...room, unread: room.unread + 1 } : room,
-          )
-        }
-      }
-    },
-    addRoom: (state, action: PayloadAction<Room>) => {
-      state.rooms.push(action.payload)
-    },
-    updateRoom: (state, action: PayloadAction<Room>) => {
-      state.rooms = state.rooms.map((room) => (room.id === action.payload.id ? action.payload : room))
-    },
-    setError: (state, action: PayloadAction<string | null>) => {
-      state.error = action.payload
-    },
-    // Initialize with dummy data for demo purposes
-    initializeDummyData: (state, action: PayloadAction<{ rooms: Room[]; messages: Message[]; currentUser: User }>) => {
-      state.rooms = action.payload.rooms
-      state.messages = action.payload.messages
-      state.currentUser = action.payload.currentUser
-      state.activeRoom = action.payload.rooms[0]?.id || null
     },
   },
   extraReducers: (builder) => {
     builder
+      /* WebSocket ---------------------------------------------------------- */
       .addCase(connectWebSocket.pending, (state) => {
-        state.connecting = true
-        state.error = null
+        state.connecting = true;
+        state.error = null;
       })
       .addCase(connectWebSocket.fulfilled, (state, action) => {
-        state.socket = action.payload
-        state.connected = true
-        state.connecting = false
+        state.socket = action.payload;
+        state.connected = true;
+        state.connecting = false;
       })
       .addCase(connectWebSocket.rejected, (state, action) => {
-        state.connecting = false
-        state.connected = false
-        state.error = action.error.message || "Failed to connect to WebSocket"
+        state.error = action.error.message ?? "WebSocket connection failed";
+        state.connecting = false;
       })
+      /* Rooms -------------------------------------------------------------- */
+      .addCase(fetchRooms.fulfilled, (state, action) => {
+        state.rooms = action.payload;
+        if (state.activeRoom === null && action.payload.length) {
+          state.activeRoom = action.payload[0].id;
+        }
+      })
+      .addCase(createRoom.fulfilled, (state, action) => {
+        state.rooms.push(action.payload);
+      })
+      .addCase(inviteUser.fulfilled, (state, action) => {
+        state.rooms = state.rooms.map((r) =>
+          r.id === action.payload.id ? action.payload : r
+        );
+      })
+      /* Messages ----------------------------------------------------------- */
+      .addCase(fetchMessages.fulfilled, (state, action) => {
+        state.messages = state.messages
+          .filter((m) => m.roomId !== action.payload.roomId)
+          .concat(action.payload.messages);
+      })
+      .addCase(sendMessage.fulfilled, (state, action) => {
+        state.messages.push(action.payload);
+      });
   },
-})
+});
 
-// Export actions
+/* -------------------------------------------------------------------------- */
+/*                                 SELECTORS                                  */
+/* -------------------------------------------------------------------------- */
+
+export const selectRooms = (state: RootState) => state.chat.rooms;
+export const selectActiveRoom = (state: RootState) => state.chat.activeRoom;
+export const selectCurrentUser = (state: RootState) =>
+  (state as any).auth.user as User | null;
+export const selectIsConnected = (state: RootState) => state.chat.connected;
+export const selectIsConnecting = (state: RootState) => state.chat.connecting;
+export const selectError = (state: RootState) => state.chat.error;
+export const selectMessagesByRoom = (state: RootState, roomId: number) =>
+  state.chat.messages.filter((m) => m.roomId === roomId);
+export const selectActiveRoomData = (state: RootState) =>
+  state.chat.rooms.find((r) => r.id === state.chat.activeRoom);
+
+/* -------------------------------------------------------------------------- */
+/*                                   EXPORTS                                  */
+/* -------------------------------------------------------------------------- */
+
 export const {
-  setSocket,
   setConnected,
-  setCurrentUser,
   setActiveRoom,
-  addMessage,
-  receiveMessage,
   addRoom,
   updateRoom,
-  setError,
-  initializeDummyData,
-} = chatSlice.actions
+  receiveMessage,
+} = chatSlice.actions;
 
-// Export selectors
-export const selectRooms = (state: RootState) => state.chat.rooms
-export const selectMessages = (state: RootState) => state.chat.messages
-export const selectActiveRoom = (state: RootState) => state.chat.activeRoom
-export const selectCurrentUser = (state: RootState) => state.chat.currentUser
-export const selectIsConnected = (state: RootState) => state.chat.connected
-export const selectIsConnecting = (state: RootState) => state.chat.connecting
-export const selectError = (state: RootState) => state.chat.error
-export const selectMessagesByRoom = (state: RootState, roomId: number) =>
-  state.chat.messages.filter((message) => message.roomId === roomId)
-export const selectActiveRoomData = (state: RootState) =>
-  state.chat.rooms.find((room) => room.id === state.chat.activeRoom)
-
-export default chatSlice.reducer
+export default chatSlice.reducer;
