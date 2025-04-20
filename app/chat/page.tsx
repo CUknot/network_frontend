@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { use, useState } from "react"
+import { use, useState, useRef} from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -86,13 +86,10 @@ export default function ChatPage() {
   const [directUsername, setDirectUsername] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Get messages for the active room
   const messages = useAppSelector(selectMessagesForRoom)
-
-  useEffect(() => {
-    console.log("isConnected:", isConnected)
-  }, [isConnected])
   
   //connect to WebSocket
   useEffect(() => {
@@ -102,13 +99,18 @@ export default function ChatPage() {
     return 
   }, [dispatch, authUser])
 
+  // Scroll to the bottom of the chat container when messages change
+  useEffect(() => {
+    if (messages.length > 0 && activeRoomId) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.room_id === activeRoomId && chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    }
+  }, [messages, activeRoomId]);
+
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser)
-
-  useEffect(() => {
-    console.log("Filtered users:", filteredUsers)
-  }
-  , [filteredUsers])
 
   // Handle direct message validation
   const isValidDirectMessage = (): boolean => {
@@ -461,7 +463,7 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.user_id == authUser?.id ? "justify-end" : "justify-start"}`}>
               <div className={`flex max-w-[70%] ${msg.user_id == authUser?.id ? "flex-row-reverse" : "flex-row"}`}>

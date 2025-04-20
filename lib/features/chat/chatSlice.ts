@@ -175,7 +175,7 @@ const chatSlice = createSlice({
     },
     handleIncomingMessage(state, action: PayloadAction<any>) {
       const message = action.payload
-      const currentUserId = (state as any).auth.user?.id; // Access current user ID from auth state
+      const currentUserId = (state as any).auth?.user?.id; 
 
       // Handle the incoming message based on its type
       if (message.type === 'message' && message.payload) {
@@ -183,7 +183,7 @@ const chatSlice = createSlice({
         state.messages.push(newMessage);
 
         // Increment unread count for the room if the message is not from the current user
-        if (newMessage.room_id && newMessage.user_id !== currentUserId) {
+        if (newMessage.room_id && newMessage.user_id !== currentUserId && state.activeRoom !== newMessage.room_id) {
           state.rooms = state.rooms.map(roomWithMeta => {
             if (roomWithMeta.room.id === newMessage.room_id) {
               return { ...roomWithMeta, unreadCount: roomWithMeta.unreadCount + 1 };
