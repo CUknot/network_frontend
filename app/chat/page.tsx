@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,163 +28,31 @@ import {
   connectWebSocket,
   sendMessage,
   createRoom,
-  inviteUsers,
-  setActiveRoom,
-  initializeDummyData,
+  inviteUser,
+  setActivateRoom,
   selectRooms,
-  selectMessagesByRoom,
   selectActiveRoom,
   selectActiveRoomData,
-  selectCurrentUser,
+  selectMessagesByRoom,
   selectIsConnected,
   selectIsConnecting,
-  type Room,
-  type Message,
+  getRooms,
+  // selectMessages,
+  // selectError,
+
+  // type Room,
+  // type Message,
 } from "@/lib/features/chat/chatSlice"
 
+import { selectSearchUser, selectCurrentUser } from "@/lib/features/user/userSlice"
+
 // Add these imports at the top of the file
-import { selectIsAuthenticated, selectUser, logout } from "@/lib/features/auth/authSlice"
+import { useEffect } from "react"
+import { selectIsAuthenticated, selectUser } from "@/lib/features/auth/authSlice"
 
-// Dummy data for initial state
-const dummyRooms: Room[] = [
-  { id: 1, name: "General", unread: 3, type: "group", members: ["alice#dev", "bob#designer", "charlie#pm"] },
-  { id: 2, name: "Design Team", unread: 0, type: "group", members: ["bob#designer", "david#qa"] },
-  { id: 3, name: "Development", unread: 5, type: "group", members: ["alice#dev", "charlie#pm", "eve#admin"] },
-  { id: 4, name: "Marketing", unread: 0, type: "group", members: ["david#qa", "eve#admin"] },
-  { id: 5, name: "Support", unread: 1, type: "group", members: ["alice#dev", "eve#admin"] },
-  {
-    id: 6,
-    name: "Alice",
-    unread: 0,
-    type: "direct",
-    members: ["alice#dev"],
-    directUser: { name: "alice", tag: "dev" },
-  },
-]
-
-const dummyMessages: Message[] = [
-  { id: 1, roomId: 1, sender: "Alice", content: "Hey everyone! How's it going?", timestamp: "10:30 AM", isUser: false },
-  {
-    id: 2,
-    roomId: 1,
-    sender: "Bob",
-    content: "Pretty good, working on the new design system.",
-    timestamp: "10:32 AM",
-    isUser: false,
-  },
-  {
-    id: 3,
-    roomId: 1,
-    sender: "You",
-    content: "I'm just setting up the new project structure.",
-    timestamp: "10:33 AM",
-    isUser: true,
-  },
-  {
-    id: 4,
-    roomId: 1,
-    sender: "Charlie",
-    content: "Can someone help me with the API integration?",
-    timestamp: "10:35 AM",
-    isUser: false,
-  },
-  {
-    id: 5,
-    roomId: 1,
-    sender: "You",
-    content: "Sure, I can help with that. What specifically are you stuck on?",
-    timestamp: "10:36 AM",
-    isUser: true,
-  },
-  {
-    id: 6,
-    roomId: 1,
-    sender: "Charlie",
-    content: "Thanks! I'm having trouble with the authentication flow.",
-    timestamp: "10:38 AM",
-    isUser: false,
-  },
-  {
-    id: 7,
-    roomId: 1,
-    sender: "Alice",
-    content: "I implemented something similar last week. I can share my code.",
-    timestamp: "10:40 AM",
-    isUser: false,
-  },
-  { id: 8, roomId: 1, sender: "You", content: "That would be great, Alice!", timestamp: "10:41 AM", isUser: true },
-
-  {
-    id: 9,
-    roomId: 2,
-    sender: "David",
-    content: "Has anyone reviewed the latest mockups?",
-    timestamp: "09:15 AM",
-    isUser: false,
-  },
-  {
-    id: 10,
-    roomId: 2,
-    sender: "You",
-    content: "I did, they look great! Just a few minor tweaks needed.",
-    timestamp: "09:20 AM",
-    isUser: true,
-  },
-
-  {
-    id: 11,
-    roomId: 3,
-    sender: "Eve",
-    content: "The new feature is ready for testing.",
-    timestamp: "Yesterday",
-    isUser: false,
-  },
-  {
-    id: 12,
-    roomId: 3,
-    sender: "Frank",
-    content: "I'll test it this afternoon.",
-    timestamp: "Yesterday",
-    isUser: false,
-  },
-
-  {
-    id: 13,
-    roomId: 4,
-    sender: "Grace",
-    content: "Campaign stats are in - 24% increase in conversions!",
-    timestamp: "Monday",
-    isUser: false,
-  },
-
-  {
-    id: 14,
-    roomId: 5,
-    sender: "Henry",
-    content: "Customer reported an issue with login on mobile.",
-    timestamp: "Tuesday",
-    isUser: false,
-  },
-
-  {
-    id: 15,
-    roomId: 6,
-    sender: "Alice",
-    content: "Hey John, do you have time to review my PR?",
-    timestamp: "11:20 AM",
-    isUser: false,
-  },
-]
-
-// Dummy users for invites
-const dummyUsers = [
-  { name: "alice", tag: "dev" },
-  { name: "bob", tag: "designer" },
-  { name: "charlie", tag: "pm" },
-  { name: "david", tag: "qa" },
-  { name: "eve", tag: "admin" },
-]
-
+// Import the logout action
+import { logout } from "@/lib/features/auth/authSlice"
+  
 export default function ChatPage() {
   const router = useRouter()
   const dispatch = useAppDispatch()
@@ -196,7 +64,7 @@ export default function ChatPage() {
   const isConnected = useAppSelector(selectIsConnected)
   const isConnecting = useAppSelector(selectIsConnecting)
 
-  // Auth state
+  // Add these lines to get auth state
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const authUser = useAppSelector(selectUser)
   const currentUser = useAppSelector(selectCurrentUser)
@@ -222,34 +90,17 @@ export default function ChatPage() {
   // Get messages for the active room
   const messages = useAppSelector((state) => (activeRoomId ? selectMessagesByRoom(state, activeRoomId) : []))
 
-  // Initialize the app with dummy data and connect to WebSocket
+  //connect to WebSocket
   useEffect(() => {
     if (!authUser) return
-
-    // Initialize with dummy data
-    dispatch(
-      initializeDummyData({
-        rooms: dummyRooms,
-        messages: dummyMessages,
-        currentUser: authUser,
-      }),
-    )
-
-    // Connect to WebSocket
     dispatch(connectWebSocket())
-
-    // Cleanup WebSocket on unmount
-    return () => {
-      // No need to explicitly close the WebSocket as it's handled in the connectWebSocket thunk
-    }
+    dispatch(getRooms())
+    console.log("rooms", rooms)
+    return 
   }, [dispatch, authUser])
 
   // Filter users based on search term and exclude already selected users
-  const filteredUsers = dummyUsers.filter(
-    (user) =>
-      (user.name.includes(searchTerm.toLowerCase()) || user.tag.includes(searchTerm.toLowerCase())) &&
-      !selectedUsers.includes(`${user.name}#${user.tag}`),
-  )
+  const filteredUsers = useAppSelector(selectSearchUser)
 
   // Handle direct message validation
   const isValidDirectMessage = () => {
@@ -283,7 +134,7 @@ export default function ChatPage() {
         createRoom({
           name: directUsername,
           type: "direct",
-          directUser: { name: directUsername, tag: directUserTag },
+          user_ids: [], // Add the current user's ID
         }),
       )
     } else {
@@ -292,6 +143,7 @@ export default function ChatPage() {
         createRoom({
           name: newRoomName,
           type: "group",
+          user_ids: [], // Add user IDs if needed
         }),
       )
     }
@@ -306,14 +158,14 @@ export default function ChatPage() {
 
   // Handle inviting users to a group
   const handleInviteUsers = () => {
-    if (!activeRoomId || !activeRoomData || activeRoomData.type !== "group" || selectedUsers.length === 0) return
+    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group" || selectedUsers.length === 0) return
 
-    dispatch(
-      inviteUsers({
-        roomId: activeRoomId,
-        users: selectedUsers,
-      }),
-    )
+      selectedUsers.map((user) => {
+        dispatch(inviteUser(
+          activeRoomId,
+          user
+        ))
+      })
 
     setSelectedUsers([])
     setIsInviteDialogOpen(false)
@@ -336,10 +188,10 @@ export default function ChatPage() {
     if (!newMessage.trim() || !activeRoomId) return
 
     dispatch(
-      sendMessage({
-        roomId: activeRoomId,
-        content: newMessage,
-      }),
+      sendMessage(
+        activeRoomId,
+        newMessage,
+      ),
     )
 
     setNewMessage("")
@@ -347,10 +199,10 @@ export default function ChatPage() {
 
   // Handle changing the active room
   const handleRoomChange = (roomId: number) => {
-    dispatch(setActiveRoom(roomId))
+    dispatch(setActivateRoom(roomId))
   }
 
-  // Handle logout
+  // Then update the logout handler
   const handleLogout = () => {
     dispatch(logout())
     router.push("/")
@@ -366,7 +218,7 @@ export default function ChatPage() {
             <h1 className="font-bold text-[#111827]">Chat App</h1>
             {currentUser && (
               <span className="ml-2 text-sm text-[#6B7280]">
-                {currentUser.name}#{currentUser.tag}
+                {currentUser.username}
               </span>
             )}
           </div>
@@ -473,22 +325,22 @@ export default function ChatPage() {
         <div className="flex-1 overflow-y-auto">
           {rooms.map((room) => (
             <button
-              key={room.id}
+              key={room.room.id}
               className={`w-full text-left px-4 py-2 flex items-center justify-between ${
-                activeRoomId === room.id ? "bg-[#E0F2FE] text-[#3B82F6]" : "hover:bg-gray-50 text-[#111827]"
+                activeRoomId === room.room.id ? "bg-[#E0F2FE] text-[#3B82F6]" : "hover:bg-gray-50 text-[#111827]"
               }`}
-              onClick={() => handleRoomChange(room.id)}
+              onClick={() => handleRoomChange(room.room.id)}
             >
               <div className="flex items-center">
-                {room.type === "direct" ? (
+                {room.room.type === "direct" ? (
                   <UserIcon size={16} className="mr-2" />
                 ) : (
                   <MessageSquare size={16} className="mr-2" />
                 )}
-                <span>{room.name}</span>
+                <span>{room.room.name}</span>
               </div>
-              {room.unread > 0 && (
-                <span className="bg-[#3B82F6] text-white text-xs px-2 py-0.5 rounded-full">{room.unread}</span>
+              {room.unreadCount > 0 && (
+                <span className="bg-[#3B82F6] text-white text-xs px-2 py-0.5 rounded-full">{room.unreadCount}</span>
               )}
             </button>
           ))}
@@ -500,10 +352,7 @@ export default function ChatPage() {
         {/* Chat Header */}
         <div className="p-4 border-b border-[#D1D5DB] bg-white flex justify-between items-center">
           <h2 className="font-medium text-[#111827]">
-            {activeRoomData?.name}
-            {activeRoomData?.type === "direct" && activeRoomData.directUser && (
-              <span className="ml-2 text-sm text-[#6B7280]">#{activeRoomData.directUser.tag}</span>
-            )}
+            {activeRoomData?.room.name}
           </h2>
 
           {/* Connection status indicator */}
@@ -523,7 +372,7 @@ export default function ChatPage() {
             )}
 
             {/* Invite button for group chats */}
-            {activeRoomData?.type === "group" && (
+            {activeRoomData?.room.type === "group" && (
               <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm" className="flex items-center gap-1">
@@ -533,7 +382,7 @@ export default function ChatPage() {
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
                   <DialogHeader>
-                    <DialogTitle>Invite to {activeRoomData.name}</DialogTitle>
+                    <DialogTitle>Invite to {activeRoomData.room.name}</DialogTitle>
                     <DialogDescription>Add users to this group chat.</DialogDescription>
                   </DialogHeader>
 
@@ -566,17 +415,17 @@ export default function ChatPage() {
                       {filteredUsers.length > 0 ? (
                         filteredUsers.map((user) => (
                           <button
-                            key={`${user.name}#${user.tag}`}
+                            key={`${user.username}#${user.tag}`}
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center"
-                            onClick={() => handleSelectUser(`${user.name}#${user.tag}`)}
+                            onClick={() => handleSelectUser(`${user.username}`)}
                           >
                             <Avatar className="h-6 w-6 mr-2">
                               <AvatarFallback className="bg-[#6366F1] text-white text-xs">
-                                {user.name.charAt(0).toUpperCase()}
+                                {user.username.charAt(0).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <span>
-                              {user.name}#{user.tag}
+                              {user.username}
                             </span>
                           </button>
                         ))
@@ -606,24 +455,24 @@ export default function ChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.isUser ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[70%] ${msg.isUser ? "flex-row-reverse" : "flex-row"}`}>
-                {!msg.isUser && (
+            <div key={msg.id} className={`flex ${msg.user_id == currentUser?.id ? "justify-end" : "justify-start"}`}>
+              <div className={`flex max-w-[70%] ${msg.user_id == currentUser?.id ? "flex-row-reverse" : "flex-row"}`}>
+                {!(msg.user_id == currentUser?.id) && (
                   <Avatar className="h-8 w-8 mr-2">
-                    <AvatarFallback className="bg-[#6366F1] text-white">{msg.sender.charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="bg-[#6366F1] text-white">{msg.user.username.charAt(0)}</AvatarFallback>
                   </Avatar>
                 )}
                 <div>
                   <div
                     className={`px-4 py-2 rounded-lg ${
-                      msg.isUser ? "bg-[#E0F2FE] text-[#111827]" : "bg-[#E5E7EB] text-[#111827]"
+                      msg.user_id == currentUser?.id ? "bg-[#E0F2FE] text-[#111827]" : "bg-[#E5E7EB] text-[#111827]"
                     }`}
                   >
-                    {!msg.isUser && <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.sender}</div>}
+                    {!(msg.user_id == currentUser?.id) && <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>}
                     <p>{msg.content}</p>
                   </div>
-                  <div className={`text-xs text-[#6B7280] mt-1 ${msg.isUser ? "text-right" : "text-left"}`}>
-                    {msg.timestamp}
+                  <div className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == currentUser?.id ? "text-right" : "text-left"}`}>
+                    {msg.created_at}
                   </div>
                 </div>
               </div>
