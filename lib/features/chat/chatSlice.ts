@@ -61,7 +61,7 @@ export const getRooms = createAsyncThunk('chat/getRooms', async (_, { dispatch, 
   try {
     const res = await apiClient.get('/rooms');
     const roomsWithMeta = res.data.rooms as RoomWithMeta[];
-    
+
     // Dispatch joinRoom for each room's ID after successfully fetching the rooms
     roomsWithMeta.forEach(room => {
       dispatch(joinRoom(room.room.id.toString()));
@@ -108,6 +108,7 @@ export const setActivateRoom = createAsyncThunk(
   'chat/setActivateRoom',
   async (room_id: number, { dispatch, rejectWithValue }) => {
     dispatch(setActiveRoom(room_id)) // ✅ dispatch properly here
+    dispatch(resetUnreadCount(room_id)); // Reset unread count when room is activated
     try {
       const res = await apiClient.post('/rooms/set-activate-room', { room_id })
       return res.data.room as Room
@@ -174,17 +175,36 @@ const chatSlice = createSlice({
     },
     handleIncomingMessage(state, action: PayloadAction<any>) {
       const message = action.payload
+      const currentUserId = (state as any).auth.user?.id; // Access current user ID from auth state
 
       // Handle the incoming message based on its type
-      if (message.type === 'message') {
-        // If the message type is 'message', add it to the messages array
-        state.messages.push(message.payload) // Assuming 'message.payload' contains the message data
+      if (message.type === 'message' && message.payload) {
+        const newMessage = message.payload as Message;
+        state.messages.push(newMessage);
+
+        // Increment unread count for the room if the message is not from the current user
+        if (newMessage.room_id && newMessage.user_id !== currentUserId) {
+          state.rooms = state.rooms.map(roomWithMeta => {
+            if (roomWithMeta.room.id === newMessage.room_id) {
+              return { ...roomWithMeta, unreadCount: roomWithMeta.unreadCount + 1 };
+            }
+            return roomWithMeta;
+          });
+        }
       } else {
         // Handle other types of messages (e.g., system messages, notifications, etc.)
-        // You can add logic here if needed, for example, updating a room's unread count.
         console.log('System message or other message type', message)
       }
       console.log('Incoming message', action.payload)
+    },
+    resetUnreadCount(state, action: PayloadAction<number>) {
+      const roomId = action.payload;
+      state.rooms = state.rooms.map(roomWithMeta => {
+        if (roomWithMeta.room.id === roomId) {
+          return { ...roomWithMeta, unreadCount: 0 };
+        }
+        return roomWithMeta;
+      });
     },
   },
   extraReducers: (builder) => {
@@ -222,11 +242,11 @@ const chatSlice = createSlice({
       .addCase(getMessages.fulfilled, (state, action: PayloadAction<Message[]>) => {
         state.isLoading = false
         const newMessages = action.payload
-      
+
         // Only add messages that aren't already in state.messages
         const existingIds = new Set(state.messages.map(m => m.id))
         const uniqueNewMessages = newMessages.filter(m => !existingIds.has(m.id))
-      
+
         state.messages.push(...uniqueNewMessages)
       })
       .addCase(getMessages.rejected, (state, action) => {
@@ -236,40 +256,40 @@ const chatSlice = createSlice({
   },
 })
 
-export const { clearChatError, clearMessages, setWebSocket, setActiveRoom, 
-  setConnecting, setConnected, handleIncomingMessage } = chatSlice.actions
+export const { clearChatError, clearMessages, setWebSocket, setActiveRoom,
+  setConnecting, setConnected, handleIncomingMessage, resetUnreadCount } = chatSlice.actions
 
   export const connectWebSocket = () => (dispatch: any, getState: () => RootState) => {
     console.log('Connecting to WebSocket...')
-    
+
     // Access the WebSocket from the chat state
     const { ws, connected, connecting } = getState().chat
-  
+
     console.log('WebSocket state:', ws)
     console.log('Is connected:', connected)
     console.log('Is connecting:', connecting)
-  
+
     // Check if the WebSocket is already established
     if (!ws && !connecting) { // Only create a new WebSocket if one is not already established
       console.log('No WebSocket connection found. Creating a new one...')
-      
+
       dispatch(setConnecting(true)) // Set connecting to true while we establish the connection
-      
+
       const newWs = createWebSocketConnection(dispatch, getState)
-      
+
       if (!newWs) {
         console.error('Failed to create WebSocket connection')
         dispatch(setConnecting(false)) // Set connecting to false on failure
         return
       }
-  
+
       dispatch(setWebSocket(newWs)) // Set the new WebSocket connection in the state
       dispatch(setConnecting(false)) // Reset connecting state
     } else if (ws) {
       console.log('WebSocket is already established.')
     }
   }
-  
+
 
 // WebSocket actions (send messages)
 export const joinRoom = (roomId: string) => (dispatch: any, getState: any) => {
