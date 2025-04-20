@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,10 +33,11 @@ import {
   selectRooms,
   selectActiveRoom,
   selectActiveRoomData,
-  selectMessagesByRoom,
+  selectMessagesForRoom,
   selectIsConnected,
   selectIsConnecting,
   getRooms,
+  getMessages,
   // selectMessages,
   // selectError,
 
@@ -44,7 +45,7 @@ import {
   // type Message,
 } from "@/lib/features/chat/chatSlice"
 
-import { selectSearchUser, selectCurrentUser } from "@/lib/features/user/userSlice"
+import { selectSearchUser, selectCurrentUser, searchUser} from "@/lib/features/user/userSlice"
 
 // Add these imports at the top of the file
 import { useEffect } from "react"
@@ -83,29 +84,36 @@ export default function ChatPage() {
   const [newRoomName, setNewRoomName] = useState("")
   const [newRoomType, setNewRoomType] = useState("group")
   const [directUsername, setDirectUsername] = useState("")
-  const [directUserTag, setDirectUserTag] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
 
   // Get messages for the active room
-  const messages = useAppSelector((state) => (activeRoomId ? selectMessagesByRoom(state, activeRoomId) : []))
+  const messages = useAppSelector(selectMessagesForRoom)
 
+  useEffect(() => {
+    console.log("isConnected:", isConnected)
+  }, [isConnected])
+  
   //connect to WebSocket
   useEffect(() => {
     if (!authUser) return
     dispatch(connectWebSocket())
     dispatch(getRooms())
-    console.log("rooms", rooms)
     return 
   }, [dispatch, authUser])
 
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser)
 
+  useEffect(() => {
+    console.log("Filtered users:", filteredUsers)
+  }
+  , [filteredUsers])
+
   // Handle direct message validation
-  const isValidDirectMessage = () => {
+  const isValidDirectMessage = (): boolean => {
     if (newRoomType !== "direct") return true
-    return directUsername.trim() !== "" && directUserTag.trim() !== ""
+    return directUsername.trim() !== ""
   }
 
   // Handle group validation
@@ -120,7 +128,6 @@ export default function ChatPage() {
       setNewRoomName("")
     } else {
       setDirectUsername("")
-      setDirectUserTag("")
     }
   }, [newRoomType])
 
@@ -152,7 +159,6 @@ export default function ChatPage() {
     setNewRoomName("")
     setNewRoomType("group")
     setDirectUsername("")
-    setDirectUserTag("")
     setIsCreateRoomOpen(false)
   }
 
@@ -182,9 +188,21 @@ export default function ChatPage() {
     setSelectedUsers(selectedUsers.filter((u) => u !== user))
   }
 
+  // Handle search term change
+  const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    if (term.trim()) {
+      console.log("Searching for users:", term.trim())
+      dispatch(searchUser(term.trim())); 
+    }
+  };
+
   // Handle sending a message
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    console.log("Sending message:", newMessage)
+    console.log("Active room ID:", activeRoomId)
     if (!newMessage.trim() || !activeRoomId) return
 
     dispatch(
@@ -193,13 +211,15 @@ export default function ChatPage() {
         newMessage,
       ),
     )
-
     setNewMessage("")
   }
 
   // Handle changing the active room
-  const handleRoomChange = (roomId: number) => {
-    dispatch(setActivateRoom(roomId))
+  const handleRoomChange = async (roomId: number) => {
+    console.log("Changing room to:", roomId)
+    await dispatch(setActivateRoom(roomId))
+    await dispatch(getMessages(roomId))
+    console.log(messages)
   }
 
   // Then update the logout handler
@@ -291,18 +311,6 @@ export default function ChatPage() {
                         onChange={(e) => setDirectUsername(e.target.value)}
                         className="col-span-3"
                         placeholder="Enter username"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="tag" className="text-right">
-                        Tag
-                      </Label>
-                      <Input
-                        id="tag"
-                        value={directUserTag}
-                        onChange={(e) => setDirectUserTag(e.target.value)}
-                        className="col-span-3"
-                        placeholder="Enter tag"
                       />
                     </div>
                   </div>
@@ -406,7 +414,7 @@ export default function ChatPage() {
                       <Input
                         placeholder="Search users..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={handleSearchTermChange}
                       />
                     </div>
 
@@ -455,9 +463,9 @@ export default function ChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.user_id == currentUser?.id ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[70%] ${msg.user_id == currentUser?.id ? "flex-row-reverse" : "flex-row"}`}>
-                {!(msg.user_id == currentUser?.id) && (
+            <div key={msg.id} className={`flex ${msg.user_id == authUser?.id ? "justify-end" : "justify-start"}`}>
+              <div className={`flex max-w-[70%] ${msg.user_id == authUser?.id ? "flex-row-reverse" : "flex-row"}`}>
+                {!(msg.user_id == authUser?.id) && (
                   <Avatar className="h-8 w-8 mr-2">
                     <AvatarFallback className="bg-[#6366F1] text-white">{msg.user.username.charAt(0)}</AvatarFallback>
                   </Avatar>
@@ -465,13 +473,13 @@ export default function ChatPage() {
                 <div>
                   <div
                     className={`px-4 py-2 rounded-lg ${
-                      msg.user_id == currentUser?.id ? "bg-[#E0F2FE] text-[#111827]" : "bg-[#E5E7EB] text-[#111827]"
+                      msg.user_id == authUser?.id ? "bg-[#E0F2FE] text-[#111827]" : "bg-[#E5E7EB] text-[#111827]"
                     }`}
                   >
-                    {!(msg.user_id == currentUser?.id) && <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>}
+                    {!(msg.user_id == authUser?.id) && <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>}
                     <p>{msg.content}</p>
                   </div>
-                  <div className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == currentUser?.id ? "text-right" : "text-left"}`}>
+                  <div className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == authUser?.id ? "text-right" : "text-left"}`}>
                     {msg.created_at}
                   </div>
                 </div>

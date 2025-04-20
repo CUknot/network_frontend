@@ -1,6 +1,6 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, type PayloadAction, createSelector } from '@reduxjs/toolkit'
 import type { RootState } from '@/lib/store'
-import { apiClient } from "@/lib/axios"
+import apiClient from "@/lib/axios"
 
 interface User {
   id: number
@@ -57,14 +57,21 @@ const initialState: ChatState = {
 }
 
 // GET /rooms
-export const getRooms = createAsyncThunk('chat/getRooms', async (_, { rejectWithValue }) => {
+export const getRooms = createAsyncThunk('chat/getRooms', async (_, { dispatch, rejectWithValue }) => {
   try {
-    const res = await apiClient.get('/rooms')
-    return res.data.rooms as RoomWithMeta[]
+    const res = await apiClient.get('/rooms');
+    const roomsWithMeta = res.data.rooms as RoomWithMeta[];
+    
+    // Dispatch joinRoom for each room's ID after successfully fetching the rooms
+    roomsWithMeta.forEach(room => {
+      dispatch(joinRoom(room.room.id.toString()));
+    });
+
+    return roomsWithMeta; // Return the rooms data to update the state
   } catch (err: any) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to fetch rooms')
+    return rejectWithValue(err.response?.data?.message || 'Failed to fetch rooms');
   }
-})
+});
 
 // POST /rooms
 export const createRoom = createAsyncThunk(
@@ -88,6 +95,7 @@ export const getMessages = createAsyncThunk(
   async (room_id: number, { rejectWithValue }) => {
     try {
       const res = await apiClient.get(`/messages?room_id=${room_id}`)
+      console.log('Messages:', res.data.messages)
       return res.data.messages as Message[]
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch messages')
@@ -98,7 +106,8 @@ export const getMessages = createAsyncThunk(
 // POST /rooms/set-activate-room
 export const setActivateRoom = createAsyncThunk(
   'chat/setActivateRoom',
-  async (room_id: number, { rejectWithValue }) => {
+  async (room_id: number, { dispatch, rejectWithValue }) => {
+    dispatch(setActiveRoom(room_id)) // ✅ dispatch properly here
     try {
       const res = await apiClient.post('/rooms/set-activate-room', { room_id })
       return res.data.room as Room
@@ -108,13 +117,20 @@ export const setActivateRoom = createAsyncThunk(
   }
 )
 
+
 // Setup WebSocket connection
-const createWebSocketConnection = (dispatch: any) => {
-  const ws = new WebSocket('ws://your-websocket-server-url')
+const createWebSocketConnection = (dispatch: any, getState: () => RootState) => {
+  const user_id = getState().auth.user?.id;
+  if (!user_id) {
+    console.error('User ID not found in state. Cannot establish WebSocket connection.')
+    return null
+  }
+  const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WS_URL}?user_id=${user_id}`);
 
   // Set up WebSocket event handlers
   ws.onopen = () => {
     console.log('WebSocket connected')
+    dispatch(setConnected(true))
   }
 
   ws.onmessage = (event) => {
@@ -146,6 +162,15 @@ const chatSlice = createSlice({
     },
     setWebSocket(state, action: PayloadAction<WebSocket>) {
       state.ws = action.payload
+    },
+    setActiveRoom(state, action: PayloadAction<number>) {
+      state.activeRoom = action.payload
+    },
+    setConnecting(state, action: PayloadAction<boolean>) {
+      state.connecting = action.payload
+    },
+    setConnected(state, action: PayloadAction<boolean>) {
+      state.connected = action.payload
     },
     handleIncomingMessage(state, action: PayloadAction<any>) {
       const message = action.payload
@@ -196,7 +221,13 @@ const chatSlice = createSlice({
       })
       .addCase(getMessages.fulfilled, (state, action: PayloadAction<Message[]>) => {
         state.isLoading = false
-        state.messages = action.payload
+        const newMessages = action.payload
+      
+        // Only add messages that aren't already in state.messages
+        const existingIds = new Set(state.messages.map(m => m.id))
+        const uniqueNewMessages = newMessages.filter(m => !existingIds.has(m.id))
+      
+        state.messages.push(...uniqueNewMessages)
       })
       .addCase(getMessages.rejected, (state, action) => {
         state.isLoading = false
@@ -205,15 +236,40 @@ const chatSlice = createSlice({
   },
 })
 
-export const { clearChatError, clearMessages, setWebSocket, handleIncomingMessage } = chatSlice.actions
+export const { clearChatError, clearMessages, setWebSocket, setActiveRoom, 
+  setConnecting, setConnected, handleIncomingMessage } = chatSlice.actions
 
-export const connectWebSocket = () => (dispatch: any, getState: () => RootState) => {
-  const ws = getState().chat
-  if (!ws) {
-    const ws = createWebSocketConnection(dispatch)
-    dispatch(setWebSocket(ws))
+  export const connectWebSocket = () => (dispatch: any, getState: () => RootState) => {
+    console.log('Connecting to WebSocket...')
+    
+    // Access the WebSocket from the chat state
+    const { ws, connected, connecting } = getState().chat
+  
+    console.log('WebSocket state:', ws)
+    console.log('Is connected:', connected)
+    console.log('Is connecting:', connecting)
+  
+    // Check if the WebSocket is already established
+    if (!ws && !connecting) { // Only create a new WebSocket if one is not already established
+      console.log('No WebSocket connection found. Creating a new one...')
+      
+      dispatch(setConnecting(true)) // Set connecting to true while we establish the connection
+      
+      const newWs = createWebSocketConnection(dispatch, getState)
+      
+      if (!newWs) {
+        console.error('Failed to create WebSocket connection')
+        dispatch(setConnecting(false)) // Set connecting to false on failure
+        return
+      }
+  
+      dispatch(setWebSocket(newWs)) // Set the new WebSocket connection in the state
+      dispatch(setConnecting(false)) // Reset connecting state
+    } else if (ws) {
+      console.log('WebSocket is already established.')
+    }
   }
-}
+  
 
 // WebSocket actions (send messages)
 export const joinRoom = (roomId: string) => (dispatch: any, getState: any) => {
@@ -259,8 +315,13 @@ export const selectActiveRoom = (state: RootState) => state.chat.activeRoom
 export const selectIsConnected = (state: RootState) => state.chat.connected
 export const selectIsConnecting = (state: RootState) => state.chat.connecting
 export const selectError = (state: RootState) => state.chat.error
-export const selectMessagesByRoom = (state: RootState, roomId: number) =>
-  state.chat.messages.filter((message) => message.room_id === roomId)
+
+export const selectMessagesForRoom = createSelector(
+  [selectMessages, selectActiveRoom],
+  (messages, activeRoom) => {
+    return messages.filter(msg => msg.room_id === activeRoom)
+  }
+)
 export const selectActiveRoomData = (state: RootState) =>
   state.chat.rooms.find((room) => room.room.id === state.chat.activeRoom)
 

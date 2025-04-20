@@ -2,6 +2,12 @@ import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/tool
 import type { RootState } from "@/lib/store"
 import apiClient from "@/lib/axios"
 
+interface User {
+  id: number
+  username: string
+  email: string
+}
+
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
@@ -22,25 +28,28 @@ const initialState: AuthState = {
   error: null,
 }
 
-
-interface User {
-  id: string
-  username: string
-  email: string
-}
-
+// Async login thunk
 export const login = createAsyncThunk(
   "auth/login",
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
       const res = await apiClient.post("/login", { email, password })
-      return res.data as User
+
+      const { user, token } = res.data
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("token", token)
+        localStorage.setItem("user", JSON.stringify(user))
+      }
+
+      return user
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || "Login failed")
     }
   }
 )
 
+// Async register thunk
 export const register = createAsyncThunk(
   "auth/register",
   async (
@@ -49,7 +58,15 @@ export const register = createAsyncThunk(
   ) => {
     try {
       const res = await apiClient.post("/register", { username, tag, email, password })
-      return res.data as User
+
+      const { user, token } = res.data
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("token", token)
+        localStorage.setItem("user", JSON.stringify(user))
+      }
+
+      return user
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || "Registration failed")
     }
@@ -65,6 +82,7 @@ const authSlice = createSlice({
       state.isAuthenticated = false
       state.error = null
       localStorage.removeItem("user")
+      localStorage.removeItem("token")
     },
     clearError(state) {
       state.error = null
@@ -80,9 +98,6 @@ const authSlice = createSlice({
         state.isLoading = false
         state.user = action.payload
         state.isAuthenticated = true
-
-        // Save user to localStorage
-        localStorage.setItem("user", JSON.stringify(action.payload))
       })
       .addCase(login.rejected, (state, action) => {
         state.isLoading = false
@@ -96,9 +111,6 @@ const authSlice = createSlice({
         state.isLoading = false
         state.user = action.payload
         state.isAuthenticated = true
-
-        // Save user to localStorage
-        localStorage.setItem("user", JSON.stringify(action.payload))
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false
