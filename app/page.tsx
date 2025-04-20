@@ -60,7 +60,6 @@ export default function AuthPage() {
   // Handle login form submission
   const handleLoginSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    console.log("Login form submitted:", loginForm)
     dispatch(login(loginForm))
   }
 

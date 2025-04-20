@@ -1,9 +1,7 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit"
-import type { RootState } from "../../store"
-import type { User } from "../chat/chatSlice"
-import axios from "axios"
+import type { RootState } from "@/lib/store"
+import apiClient from "@/lib/axios"
 
-// Define types for our auth state
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
@@ -11,100 +9,104 @@ interface AuthState {
   error: string | null
 }
 
-// Initial state
+let parsedUser: User | null = null
+if (typeof window !== "undefined") {
+  const storedUser = localStorage.getItem("user")
+  parsedUser = storedUser ? JSON.parse(storedUser) : null
+}
+
 const initialState: AuthState = {
-  user: null,
-  isAuthenticated: false,
+  user: parsedUser,
+  isAuthenticated: !!parsedUser,
   isLoading: false,
   error: null,
 }
 
-// Set base URL if needed
-const API = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
-})
+
+interface User {
+  id: string
+  username: string
+  email: string
+}
 
 export const login = createAsyncThunk(
-  "login",
+  "auth/login",
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const response = await API.post("/login", { email, password })
-      
-      return response.data as User
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Login failed")
+      const res = await apiClient.post("/login", { email, password })
+      return res.data as User
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || "Login failed")
     }
   }
 )
 
 export const register = createAsyncThunk(
-  "register",
+  "auth/register",
   async (
     { username, tag, email, password }: { username: string; tag: string; email: string; password: string },
     { rejectWithValue }
   ) => {
     try {
-      const response = await API.post("/register", { username, tag, email, password })
-      
-      return response.data as User
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Registration failed")
+      const res = await apiClient.post("/register", { username, tag, email, password })
+      return res.data as User
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || "Registration failed")
     }
   }
 )
 
-// Create the slice
 const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    logout: (state) => {
+    logout(state) {
       state.user = null
       state.isAuthenticated = false
       state.error = null
+      localStorage.removeItem("user")
     },
-    clearError: (state) => {
+    clearError(state) {
       state.error = null
     },
   },
   extraReducers: (builder) => {
     builder
-      // Login cases
       .addCase(login.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
       .addCase(login.fulfilled, (state, action: PayloadAction<User>) => {
         state.isLoading = false
-        state.isAuthenticated = true
         state.user = action.payload
-        state.error = null
+        state.isAuthenticated = true
+
+        // Save user to localStorage
+        localStorage.setItem("user", JSON.stringify(action.payload))
       })
       .addCase(login.rejected, (state, action) => {
         state.isLoading = false
-        state.isAuthenticated = false
         state.error = action.payload as string
       })
-      // Register cases
       .addCase(register.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
       .addCase(register.fulfilled, (state, action: PayloadAction<User>) => {
         state.isLoading = false
-        state.isAuthenticated = true
         state.user = action.payload
-        state.error = null
+        state.isAuthenticated = true
+
+        // Save user to localStorage
+        localStorage.setItem("user", JSON.stringify(action.payload))
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false
-        state.isAuthenticated = false
         state.error = action.payload as string
       })
   },
 })
 
-// Export actions
 export const { logout, clearError } = authSlice.actions
 
 // Export selectors

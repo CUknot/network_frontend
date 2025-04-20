@@ -1,19 +1,17 @@
-import { configureStore } from "@reduxjs/toolkit"
-import chatReducer from "./features/chat/chatSlice"
-import authReducer from "./features/auth/authSlice"
+import { configureStore } from '@reduxjs/toolkit'
+import authReducer from '@/lib/features/auth/authSlice'
+import userReducer from '@/lib/features/user/userSlice'
+import chatReducer from '@/lib/features/chat/chatSlice'
 
 export const store = configureStore({
   reducer: {
-    chat: chatReducer,
     auth: authReducer,
+    user: userReducer,
+    chat: chatReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: {
-        // Ignore non-serializable values in the WebSocket instance
-        ignoredActions: ["chat/setSocket"],
-        ignoredPaths: ["chat.socket"],
-      },
+      serializableCheck: false,
     }),
 })
 
