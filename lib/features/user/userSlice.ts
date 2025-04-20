@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { apiClient } from '@/lib/axios'
+import apiClient from '@/lib/axios'
 
 // Define user types
 interface User {
@@ -38,7 +38,7 @@ export const searchUser = createAsyncThunk(
   async (username: string, { rejectWithValue }) => {
     try {
       const res = await apiClient.get(`/users?username=${encodeURIComponent(username)}`)
-      return res.data as User[]
+      return res.data.users as User[]
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to search users')
     }
