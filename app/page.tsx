@@ -40,7 +40,6 @@ export default function AuthPage() {
   })
   const [registerForm, setRegisterForm] = useState({
     username: "",
-    tag: "",
     email: "",
     password: "",
   })
@@ -142,31 +141,17 @@ export default function AuthPage() {
             </TabsContent>
             <TabsContent value="register">
               <form onSubmit={handleRegisterSubmit} className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      name="username"
-                      placeholder="john"
-                      required
-                      className="border-[#D1D5DB]"
-                      value={registerForm.username}
-                      onChange={handleRegisterChange}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tag">Tag</Label>
-                    <Input
-                      id="tag"
-                      name="tag"
-                      placeholder="doe"
-                      required
-                      className="border-[#D1D5DB]"
-                      value={registerForm.tag}
-                      onChange={handleRegisterChange}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    name="username"
+                    placeholder="john"
+                    required
+                    className="border-[#D1D5DB]"
+                    value={registerForm.username}
+                    onChange={handleRegisterChange}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="register-email">Email</Label>

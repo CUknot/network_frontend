@@ -1,13 +1,13 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
-import { use, useState, useRef} from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { MessageSquare, Users, LogOut, UserPlus, X } from "lucide-react"
+import { MessageSquare, Users, LogOut, UserPlus, X, Info, LeafIcon as LeaveIcon, Bell } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -17,10 +17,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Plus, UserIcon } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { format, isToday, isYesterday, parseISO } from "date-fns"
+import { th } from "date-fns/locale"
 
 // Import Redux hooks and actions
 import { useAppDispatch, useAppSelector } from "@/lib/hooks"
@@ -38,22 +41,18 @@ import {
   selectIsConnecting,
   getRooms,
   getMessages,
-  // selectMessages,
-  // selectError,
-
-  // type Room,
-  // type Message,
+  leaveGroup,
 } from "@/lib/features/chat/chatSlice"
 
-import { selectSearchUser, selectCurrentUser, searchUser} from "@/lib/features/user/userSlice"
+import { selectSearchUser, selectCurrentUser, searchUser } from "@/lib/features/user/userSlice"
+import { getPendingInvites } from "@/lib/features/invite/inviteSlice"
 
 // Add these imports at the top of the file
-import { useEffect } from "react"
 import { selectIsAuthenticated, selectUser } from "@/lib/features/auth/authSlice"
 
 // Import the logout action
 import { logout } from "@/lib/features/auth/authSlice"
-  
+
 export default function ChatPage() {
   const router = useRouter()
   const dispatch = useAppDispatch()
@@ -81,33 +80,34 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("")
   const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false)
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
+  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false)
   const [newRoomName, setNewRoomName] = useState("")
   const [newRoomType, setNewRoomType] = useState("group")
   const [directUsername, setDirectUsername] = useState("")
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Get messages for the active room
   const messages = useAppSelector(selectMessagesForRoom)
-  
-  //connect to WebSocket
+
+  // Connect to WebSocket
   useEffect(() => {
     if (!authUser) return
     dispatch(connectWebSocket())
     dispatch(getRooms())
-    return 
+    return
   }, [dispatch, authUser])
 
   // Scroll to the bottom of the chat container when messages change
   useEffect(() => {
     if (messages.length > 0 && activeRoomId) {
-      const lastMessage = messages[messages.length - 1];
+      const lastMessage = messages[messages.length - 1]
       if (lastMessage.room_id === activeRoomId && chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
       }
     }
-  }, [messages, activeRoomId]);
+  }, [messages, activeRoomId])
 
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser)
@@ -168,12 +168,9 @@ export default function ChatPage() {
   const handleInviteUsers = () => {
     if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group" || selectedUsers.length === 0) return
 
-      selectedUsers.map((user) => {
-        dispatch(inviteUser(
-          activeRoomId,
-          user
-        ))
-      })
+    selectedUsers.map((user) => {
+      dispatch(inviteUser(activeRoomId, user))
+    })
 
     setSelectedUsers([])
     setIsInviteDialogOpen(false)
@@ -192,13 +189,13 @@ export default function ChatPage() {
 
   // Handle search term change
   const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value;
-    setSearchTerm(term);
+    const term = e.target.value
+    setSearchTerm(term)
     if (term.trim()) {
       console.log("Searching for users:", term.trim())
-      dispatch(searchUser(term.trim())); 
+      dispatch(searchUser(term.trim()))
     }
-  };
+  }
 
   // Handle sending a message
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
@@ -207,12 +204,7 @@ export default function ChatPage() {
     console.log("Active room ID:", activeRoomId)
     if (!newMessage.trim() || !activeRoomId) return
 
-    dispatch(
-      sendMessage(
-        activeRoomId,
-        newMessage,
-      ),
-    )
+    dispatch(sendMessage(activeRoomId, newMessage))
     setNewMessage("")
   }
 
@@ -224,29 +216,123 @@ export default function ChatPage() {
     console.log(messages)
   }
 
+  // Handle leaving a group
+  const handleLeaveGroup = () => {
+    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group") return
+
+    console.log("Leaving group:", activeRoomId)
+    dispatch(leaveGroup(activeRoomId))
+  }
+
+  // Handle navigating to pending invites
+  const handleViewPendingInvites = () => {
+    console.log("Navigating to pending invites page")
+    router.push("/invite")
+
+    // For now, just log and fetch the pending invites
+    dispatch(getPendingInvites())
+  }
+
   // Then update the logout handler
   const handleLogout = () => {
     dispatch(logout())
     router.push("/")
   }
 
+  // Group messages by date
+  const groupMessagesByDate = () => {
+    const groups: { date: string; messages: typeof messages }[] = []
+    let currentDate = ""
+    let currentGroup: typeof messages = []
+
+    messages.forEach((message) => {
+      const messageDate = message.created_at.split("T")[0] // Extract date part
+
+      if (messageDate !== currentDate) {
+        if (currentGroup.length > 0) {
+          groups.push({ date: currentDate, messages: currentGroup })
+        }
+        currentDate = messageDate
+        currentGroup = [message]
+      } else {
+        currentGroup.push(message)
+      }
+    })
+
+    if (currentGroup.length > 0) {
+      groups.push({ date: currentDate, messages: currentGroup })
+    }
+
+    return groups
+  }
+
+  // Format date for display
+  const formatMessageDate = (dateString: string) => {
+    try {
+      const date = parseISO(dateString)
+
+      if (isToday(date)) {
+        return "Today"
+      } else if (isYesterday(date)) {
+        return "Yesterday"
+      } else {
+        return format(date, "dd MMMM yyyy", { locale: th })
+      }
+    } catch (error) {
+      return dateString
+    }
+  }
+
+  // Check if a message is unread based on lastReadAt timestamp
+  const isMessageUnread = (message: any) => {
+    if (!activeRoomData) return false
+
+    const lastReadAt = activeRoomData.lastReadAt
+    if (!lastReadAt) return false
+
+    const messageCreatedAt = message.created_at
+    return new Date(messageCreatedAt) > new Date(lastReadAt)
+  }
+
+  // Check if a user is online (for demo purposes, randomly determine status)
+  const isUserOnline = (userId: number) => {
+    // In a real app, this would come from your backend or WebSocket
+    // For demo purposes, we'll use a simple algorithm based on user ID
+    return userId % 2 === 0
+  }
+
+  const messageGroups = groupMessagesByDate()
+
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
       {/* Sidebar */}
       <div className="w-64 bg-white border-r border-[#D1D5DB] flex flex-col">
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-[#D1D5DB] flex items-center justify-between">
+        <div className="p-4 border-b border-[#D1D5DB] flex items-center justify-between h-[5rem]">
           <div className="flex items-center">
             <h1 className="font-bold text-[#111827]">Chat App</h1>
-            {currentUser && (
-              <span className="ml-2 text-sm text-[#6B7280]">
-                {currentUser.username}
-              </span>
-            )}
+            {currentUser && <span className="ml-2 text-sm text-[#6B7280]">{currentUser.username}</span>}
           </div>
-          <Button variant="ghost" size="icon" onClick={handleLogout} className="text-[#6B7280] hover:text-[#111827]">
-            <LogOut size={18} />
-          </Button>
+          <div className="flex items-center space-x-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleViewPendingInvites}
+              className="text-[#6B7280] hover:text-[#111827]"
+              title="View pending invites"
+            >
+              <Bell size={18} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="text-[#6B7280] hover:text-[#111827]"
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </Button>
+          </div>
         </div>
 
         {/* Chat Rooms */}
@@ -343,11 +429,34 @@ export default function ChatPage() {
             >
               <div className="flex items-center">
                 {room.room.type === "direct" ? (
-                  <UserIcon size={16} className="mr-2" />
+                  <>
+                    <div className="relative">
+                      <UserIcon size={16} className="mr-2" />
+                      {/* Online status indicator for direct messages */}
+                      {room.room.users &&
+                        room.room.users.length > 0 &&
+                        room.room.users.some((user) => user.id !== authUser?.id) && (
+                          <span
+                            className={`absolute bottom-0 right-1 h-2 w-2 rounded-full ${
+                              isUserOnline(room.room.users.find((user) => user.id !== authUser?.id)?.id || 0)
+                                ? "bg-green-500"
+                                : "bg-gray-400"
+                            }`}
+                          />
+                        )}
+                    </div>
+                    <span>{room.room.name}</span>
+                  </>
                 ) : (
-                  <MessageSquare size={16} className="mr-2" />
+                  <>
+                    <MessageSquare size={16} className="mr-2" />
+                    <span>{room.room.name}</span>
+                    {/* Show member count for group chats */}
+                    {room.room.users && (
+                      <span className="ml-2 text-xs text-gray-500">{room.room.users.length} คน</span>
+                    )}
+                  </>
                 )}
-                <span>{room.room.name}</span>
               </div>
               {room.unreadCount > 0 && (
                 <span className="bg-[#3B82F6] text-white text-xs px-2 py-0.5 rounded-full">{room.unreadCount}</span>
@@ -359,14 +468,54 @@ export default function ChatPage() {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
-        <div className="p-4 border-b border-[#D1D5DB] bg-white flex justify-between items-center">
-          <h2 className="font-medium text-[#111827]">
+        {/* Chat Header - Fixed width with flex properties */}
+        <div className="p-4 border-b border-[#D1D5DB] bg-white flex items-center h-[5rem]">
+          <h2 className="font-medium text-[#111827] flex-grow flex items-center">
             {activeRoomData?.room.name}
+
+            {/* Room info button */}
+            {activeRoomData && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="ml-2 h-8 w-8">
+                    <Info size={16} className="text-gray-500" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <div className="space-y-2">
+                    <h3 className="font-medium">Room Members</h3>
+                    <div className="max-h-[200px] overflow-y-auto">
+                      {activeRoomData.room.users?.map((user) => (
+                        <div key={user.id} className="flex items-center py-2">
+                          <Avatar className="h-6 w-6 mr-2">
+                            <AvatarFallback className="bg-[#6366F1] text-white text-xs">
+                              {user.username.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="flex-grow">{user.username}</span>
+                          {/* Show online status for users */}
+                          <span
+                            className={`h-2 w-2 rounded-full ${isUserOnline(user.id) ? "bg-green-500" : "bg-gray-400"}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Leave group button for group chats */}
+                    {activeRoomData.room.type === "group" && (
+                      <Button variant="destructive" size="sm" className="w-full mt-2" onClick={handleLeaveGroup}>
+                        <LeaveIcon size={14} className="mr-1" />
+                        Leave Group
+                      </Button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </h2>
 
-          {/* Connection status indicator */}
-          <div className="flex items-center gap-2">
+          {/* Connection status indicator with fixed width */}
+          <div className="flex items-center gap-2 min-w-[180px] justify-end">
             {isConnecting ? (
               <span className="text-sm text-[#6B7280]">Connecting...</span>
             ) : isConnected ? (
@@ -385,7 +534,7 @@ export default function ChatPage() {
             {activeRoomData?.room.type === "group" && (
               <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1 ml-2">
                     <UserPlus size={14} />
                     <span>Invite</span>
                   </Button>
@@ -413,11 +562,7 @@ export default function ChatPage() {
 
                     {/* Search input */}
                     <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Search users..."
-                        value={searchTerm}
-                        onChange={handleSearchTermChange}
-                      />
+                      <Input placeholder="Search users..." value={searchTerm} onChange={handleSearchTermChange} />
                     </div>
 
                     {/* User list */}
@@ -425,7 +570,7 @@ export default function ChatPage() {
                       {filteredUsers.length > 0 ? (
                         filteredUsers.map((user) => (
                           <button
-                            key={`${user.username}#${user.tag}`}
+                            key={`${user.username}`}
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center"
                             onClick={() => handleSelectUser(`${user.username}`)}
                           >
@@ -434,9 +579,7 @@ export default function ChatPage() {
                                 {user.username.charAt(0).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
-                            <span>
-                              {user.username}
-                            </span>
+                            <span>{user.username}</span>
                           </button>
                         ))
                       ) : (
@@ -464,28 +607,70 @@ export default function ChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.user_id == authUser?.id ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[70%] ${msg.user_id == authUser?.id ? "flex-row-reverse" : "flex-row"}`}>
-                {!(msg.user_id == authUser?.id) && (
-                  <Avatar className="h-8 w-8 mr-2">
-                    <AvatarFallback className="bg-[#6366F1] text-white">{msg.user.username.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                )}
-                <div>
-                  <div
-                    className={`px-4 py-2 rounded-lg ${
-                      msg.user_id == authUser?.id ? "bg-[#E0F2FE] text-[#111827]" : "bg-[#E5E7EB] text-[#111827]"
-                    }`}
-                  >
-                    {!(msg.user_id == authUser?.id) && <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>}
-                    <p>{msg.content}</p>
-                  </div>
-                  <div className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == authUser?.id ? "text-right" : "text-left"}`}>
-                    {msg.created_at}
-                  </div>
-                </div>
+          {messageGroups.map((group, groupIndex) => (
+            <div key={group.date} className="space-y-4">
+              {/* Date Divider */}
+              <div className="relative flex items-center py-2">
+                <div className="flex-grow border-t border-gray-300"></div>
+                <span className="flex-shrink mx-4 text-xs text-gray-500 bg-[#F9FAFB] px-2">
+                  {formatMessageDate(group.date)}
+                </span>
+                <div className="flex-grow border-t border-gray-300"></div>
               </div>
+
+              {/* Messages for this date */}
+              {group.messages.map((msg, msgIndex) => {
+                // Check if this message is the first unread message
+                const isFirstUnread =
+                  msgIndex > 0 && !isMessageUnread(group.messages[msgIndex - 1]) && isMessageUnread(msg)
+
+                return (
+                  <React.Fragment key={msg.id}>
+                    {/* Unread Messages Divider */}
+                    {isFirstUnread && (
+                      <div className="relative flex items-center py-2">
+                        <div className="flex-grow border-t border-red-500"></div>
+                        <span className="flex-shrink mx-4 text-xs text-red-500 bg-[#F9FAFB] px-2 font-medium">ใหม่</span>
+                        <div className="flex-grow border-t border-red-500"></div>
+                      </div>
+                    )}
+
+                    {/* Message */}
+                    <div className={`flex ${msg.user_id == authUser?.id ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`flex max-w-[70%] ${msg.user_id == authUser?.id ? "flex-row-reverse" : "flex-row"}`}
+                      >
+                        {!(msg.user_id == authUser?.id) && (
+                          <Avatar className="h-8 w-8 mr-2">
+                            <AvatarFallback className="bg-[#6366F1] text-white">
+                              {msg.user.username.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div>
+                          <div
+                            className={`px-4 py-2 rounded-lg ${
+                              msg.user_id == authUser?.id
+                                ? "bg-[#E0F2FE] text-[#111827]"
+                                : "bg-[#E5E7EB] text-[#111827]"
+                            }`}
+                          >
+                            {!(msg.user_id == authUser?.id) && (
+                              <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>
+                            )}
+                            <p>{msg.content}</p>
+                          </div>
+                          <div
+                            className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == authUser?.id ? "text-right" : "text-left"}`}
+                          >
+                            {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                )
+              })}
             </div>
           ))}
         </div>
