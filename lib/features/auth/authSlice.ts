@@ -53,11 +53,11 @@ export const login = createAsyncThunk(
 export const register = createAsyncThunk(
   "auth/register",
   async (
-    { username, tag, email, password }: { username: string; tag: string; email: string; password: string },
+    { username, email, password }: { username: string; email: string; password: string },
     { rejectWithValue }
   ) => {
     try {
-      const res = await apiClient.post("/register", { username, tag, email, password })
+      const res = await apiClient.post("/register", { username, email, password })
 
       const { user, token } = res.data
 

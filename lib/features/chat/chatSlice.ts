@@ -118,6 +118,15 @@ export const setActivateRoom = createAsyncThunk(
   }
 )
 
+// Leave group thunk
+export const leaveGroup = createAsyncThunk("chat/leaveGroup", async (roomId: number, { rejectWithValue }) => {
+  try {
+    const res = await apiClient.post(`/rooms/${roomId}/leave`)
+    return roomId
+  } catch (err: any) {
+    return rejectWithValue(err.response?.data?.message || "Failed to leave group")
+  }
+})
 
 // Setup WebSocket connection
 const createWebSocketConnection = (dispatch: any, getState: () => RootState) => {
