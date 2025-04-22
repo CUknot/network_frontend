@@ -435,7 +435,12 @@ export const acceptInvite =
   (roomId: number) => (dispatch: any, getState: any) => {
     const { ws } = getState().chat;
     if (ws) {
-      ws.send(JSON.stringify({ type: "accept_invite", payload: roomId }));
+      ws.send(
+        JSON.stringify({
+          type: "accept_invite",
+          payload: String(roomId), // ← force it to be a string
+        })
+      );
     }
   };
 
