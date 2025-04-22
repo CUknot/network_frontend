@@ -1,13 +1,22 @@
-"use client"
+"use client";
 
-import React from "react"
+import React from "react";
 
-import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { MessageSquare, Users, LogOut, UserPlus, X, Info, LeafIcon as LeaveIcon, Bell } from "lucide-react"
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  MessageSquare,
+  Users,
+  LogOut,
+  UserPlus,
+  X,
+  Info,
+  LeafIcon as LeaveIcon,
+  Bell,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,17 +25,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Plus, UserIcon } from "lucide-react"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { format, isToday, isYesterday, parseISO } from "date-fns"
-import { th } from "date-fns/locale"
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Plus, UserIcon } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { th } from "date-fns/locale";
 
 // Import Redux hooks and actions
-import { useAppDispatch, useAppSelector } from "@/lib/hooks"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   connectWebSocket,
   sendMessage,
@@ -39,103 +52,113 @@ import {
   selectMessagesForRoom,
   selectIsConnected,
   selectIsConnecting,
+  selectOnlineUsers,
   getRooms,
   getMessages,
   leaveGroup,
-} from "@/lib/features/chat/chatSlice"
+  selectWebSocket,
+} from "@/lib/features/chat/chatSlice";
 
-import { selectSearchUser, selectCurrentUser, searchUser } from "@/lib/features/user/userSlice"
-import { getPendingInvites } from "@/lib/features/invite/inviteSlice"
+import {
+  selectSearchUser,
+  selectCurrentUser,
+  searchUser,
+} from "@/lib/features/user/userSlice";
+import { getPendingInvites } from "@/lib/features/invite/inviteSlice";
 
 // Add these imports at the top of the file
-import { selectIsAuthenticated, selectUser } from "@/lib/features/auth/authSlice"
+import {
+  selectIsAuthenticated,
+  selectUser,
+} from "@/lib/features/auth/authSlice";
 
 // Import the logout action
-import { logout } from "@/lib/features/auth/authSlice"
+import { logout } from "@/lib/features/auth/authSlice";
 
 export default function ChatPage() {
-  const router = useRouter()
-  const dispatch = useAppDispatch()
+  const router = useRouter();
+  const dispatch = useAppDispatch();
 
   // Redux state
-  const rooms = useAppSelector(selectRooms)
-  const activeRoomId = useAppSelector(selectActiveRoom)
-  const activeRoomData = useAppSelector(selectActiveRoomData)
-  const isConnected = useAppSelector(selectIsConnected)
-  const isConnecting = useAppSelector(selectIsConnecting)
+  const rooms = useAppSelector(selectRooms);
+  const activeRoomId = useAppSelector(selectActiveRoom);
+  const activeRoomData = useAppSelector(selectActiveRoomData);
+  const isConnected = useAppSelector(selectIsConnected);
+  const isConnecting = useAppSelector(selectIsConnecting);
 
   // Add these lines to get auth state
-  const isAuthenticated = useAppSelector(selectIsAuthenticated)
-  const authUser = useAppSelector(selectUser)
-  const currentUser = useAppSelector(selectCurrentUser)
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const authUser = useAppSelector(selectUser);
+  const currentUser = useAppSelector(selectCurrentUser);
 
   // Add this effect to redirect if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push("/")
+      router.push("/");
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, router]);
 
   // Local state for UI
-  const [newMessage, setNewMessage] = useState("")
-  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false)
-  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
-  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false)
-  const [newRoomName, setNewRoomName] = useState("")
-  const [newRoomType, setNewRoomType] = useState("group")
-  const [directUsername, setDirectUsername] = useState("")
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [newMessage, setNewMessage] = useState("");
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomType, setNewRoomType] = useState("group");
+  const [directUsername, setDirectUsername] = useState("");
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Get messages for the active room
-  const messages = useAppSelector(selectMessagesForRoom)
+  const messages = useAppSelector(selectMessagesForRoom);
 
   // Connect to WebSocket
   useEffect(() => {
-    if (!authUser) return
-    dispatch(connectWebSocket())
-    dispatch(getRooms())
-    return
-  }, [dispatch, authUser])
+    if (!authUser) return;
+    dispatch(connectWebSocket());
+    dispatch(getRooms());
+    return;
+  }, [dispatch, authUser]);
 
   // Scroll to the bottom of the chat container when messages change
   useEffect(() => {
     if (messages.length > 0 && activeRoomId) {
-      const lastMessage = messages[messages.length - 1]
+      const lastMessage = messages[messages.length - 1];
       if (lastMessage.room_id === activeRoomId && chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+        chatContainerRef.current.scrollTop =
+          chatContainerRef.current.scrollHeight;
       }
     }
-  }, [messages, activeRoomId])
+  }, [messages, activeRoomId]);
 
   // Filter users based on search term and exclude already selected users
-  const filteredUsers = useAppSelector(selectSearchUser)
+  const filteredUsers = useAppSelector(selectSearchUser);
 
   // Handle direct message validation
   const isValidDirectMessage = (): boolean => {
-    if (newRoomType !== "direct") return true
-    return directUsername.trim() !== ""
-  }
+    if (newRoomType !== "direct") return true;
+    return directUsername.trim() !== "";
+  };
 
   // Handle group validation
   const isValidGroup = () => {
-    if (newRoomType !== "group") return true
-    return newRoomName.trim() !== ""
-  }
+    if (newRoomType !== "group") return true;
+    return newRoomName.trim() !== "";
+  };
 
   // Reset form when room type changes
   useEffect(() => {
     if (newRoomType === "direct") {
-      setNewRoomName("")
+      setNewRoomName("");
     } else {
-      setDirectUsername("")
+      setDirectUsername("");
     }
-  }, [newRoomType])
+  }, [newRoomType]);
 
   // Handle creating a new room
   const handleCreateRoom = () => {
-    if (!isValidDirectMessage() || !isValidGroup()) return
+    if (!isValidDirectMessage() || !isValidGroup()) return;
 
     if (newRoomType === "direct") {
       // For direct messages
@@ -144,8 +167,8 @@ export default function ChatPage() {
           name: directUsername,
           type: "direct",
           user_ids: [], // Add the current user's ID
-        }),
-      )
+        })
+      );
     } else {
       // For groups
       dispatch(
@@ -153,155 +176,186 @@ export default function ChatPage() {
           name: newRoomName,
           type: "group",
           user_ids: [], // Add user IDs if needed
-        }),
-      )
+        })
+      );
     }
 
     // Reset form
-    setNewRoomName("")
-    setNewRoomType("group")
-    setDirectUsername("")
-    setIsCreateRoomOpen(false)
-  }
+    setNewRoomName("");
+    setNewRoomType("group");
+    setDirectUsername("");
+    setIsCreateRoomOpen(false);
+  };
 
   // Handle inviting users to a group
   const handleInviteUsers = () => {
-    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group" || selectedUsers.length === 0) return
+    if (
+      !activeRoomId ||
+      !activeRoomData ||
+      activeRoomData.room.type !== "group" ||
+      selectedUsers.length === 0
+    )
+      return;
 
     selectedUsers.map((user) => {
-      dispatch(inviteUser(activeRoomId, user))
-    })
+      dispatch(inviteUser(activeRoomId, user));
+    });
 
-    setSelectedUsers([])
-    setIsInviteDialogOpen(false)
-  }
+    setSelectedUsers([]);
+    setIsInviteDialogOpen(false);
+  };
 
   // Handle selecting a user to invite
   const handleSelectUser = (user: string) => {
-    setSelectedUsers([...selectedUsers, user])
-    setSearchTerm("")
-  }
+    setSelectedUsers([...selectedUsers, user]);
+    setSearchTerm("");
+  };
 
   // Handle removing a selected user
   const handleRemoveUser = (user: string) => {
-    setSelectedUsers(selectedUsers.filter((u) => u !== user))
-  }
+    setSelectedUsers(selectedUsers.filter((u) => u !== user));
+  };
 
   // Handle search term change
   const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value
-    setSearchTerm(term)
+    const term = e.target.value;
+    setSearchTerm(term);
     if (term.trim()) {
-      console.log("Searching for users:", term.trim())
-      dispatch(searchUser(term.trim()))
+      console.log("Searching for users:", term.trim());
+      dispatch(searchUser(term.trim()));
     }
-  }
+  };
 
   // Handle sending a message
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    console.log("Sending message:", newMessage)
-    console.log("Active room ID:", activeRoomId)
-    if (!newMessage.trim() || !activeRoomId) return
+    e.preventDefault();
+    console.log("Sending message:", newMessage);
+    console.log("Active room ID:", activeRoomId);
+    if (!newMessage.trim() || !activeRoomId) return;
 
-    dispatch(sendMessage(activeRoomId, newMessage))
-    setNewMessage("")
-  }
+    dispatch(sendMessage(activeRoomId, newMessage));
+    setNewMessage("");
+  };
 
   // Handle changing the active room
   const handleRoomChange = async (roomId: number) => {
-    console.log("Changing room to:", roomId)
-    await dispatch(setActivateRoom(roomId))
-    await dispatch(getMessages(roomId))
-    console.log(messages)
-  }
+    console.log("Changing room to:", roomId);
+    await dispatch(setActivateRoom(roomId));
+    await dispatch(getMessages(roomId));
+    console.log(messages);
+  };
 
   // Handle leaving a group
   const handleLeaveGroup = () => {
-    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group") return
+    if (
+      !activeRoomId ||
+      !activeRoomData ||
+      activeRoomData.room.type !== "group"
+    )
+      return;
 
-    console.log("Leaving group:", activeRoomId)
-    dispatch(leaveGroup(activeRoomId))
-  }
+    console.log("Leaving group:", activeRoomId);
+    dispatch(leaveGroup(activeRoomId));
+  };
 
   // Handle navigating to pending invites
   const handleViewPendingInvites = () => {
-    console.log("Navigating to pending invites page")
-    router.push("/invite")
+    console.log("Navigating to pending invites page");
+    router.push("/invite");
 
     // For now, just log and fetch the pending invites
-    dispatch(getPendingInvites())
-  }
+    dispatch(getPendingInvites());
+  };
 
   // Then update the logout handler
   const handleLogout = () => {
-    dispatch(logout())
-    router.push("/")
-  }
+    dispatch(logout());
+    router.push("/");
+  };
 
   // Group messages by date
   const groupMessagesByDate = () => {
-    const groups: { date: string; messages: typeof messages }[] = []
-    let currentDate = ""
-    let currentGroup: typeof messages = []
+    const groups: { date: string; messages: typeof messages }[] = [];
+    let currentDate = "";
+    let currentGroup: typeof messages = [];
 
     messages.forEach((message) => {
-      const messageDate = message.created_at.split("T")[0] // Extract date part
+      const messageDate = message.created_at.split("T")[0]; // Extract date part
 
       if (messageDate !== currentDate) {
         if (currentGroup.length > 0) {
-          groups.push({ date: currentDate, messages: currentGroup })
+          groups.push({ date: currentDate, messages: currentGroup });
         }
-        currentDate = messageDate
-        currentGroup = [message]
+        currentDate = messageDate;
+        currentGroup = [message];
       } else {
-        currentGroup.push(message)
+        currentGroup.push(message);
       }
-    })
+    });
 
     if (currentGroup.length > 0) {
-      groups.push({ date: currentDate, messages: currentGroup })
+      groups.push({ date: currentDate, messages: currentGroup });
     }
 
-    return groups
-  }
+    return groups;
+  };
 
   // Format date for display
   const formatMessageDate = (dateString: string) => {
     try {
-      const date = parseISO(dateString)
+      const date = parseISO(dateString);
 
       if (isToday(date)) {
-        return "Today"
+        return "Today";
       } else if (isYesterday(date)) {
-        return "Yesterday"
+        return "Yesterday";
       } else {
-        return format(date, "dd MMMM yyyy", { locale: th })
+        return format(date, "dd MMMM yyyy", { locale: th });
       }
     } catch (error) {
-      return dateString
+      return dateString;
     }
-  }
+  };
 
   // Check if a message is unread based on lastReadAt timestamp
   const isMessageUnread = (message: any) => {
-    if (!activeRoomData) return false
+    if (!activeRoomData) return false;
 
-    const lastReadAt = activeRoomData.lastReadAt
-    if (!lastReadAt) return false
+    const lastReadAt = activeRoomData.lastReadAt;
+    if (!lastReadAt) return false;
 
-    const messageCreatedAt = message.created_at
-    return new Date(messageCreatedAt) > new Date(lastReadAt)
-  }
+    const messageCreatedAt = message.created_at;
+    return new Date(messageCreatedAt) > new Date(lastReadAt);
+  };
 
   // Check if a user is online (for demo purposes, randomly determine status)
-  const isUserOnline = (userId: number) => {
-    // In a real app, this would come from your backend or WebSocket
-    // For demo purposes, we'll use a simple algorithm based on user ID
-    return userId % 2 === 0
-  }
+  // const isUserOnline = (userId: number) => {
+  //   // In a real app, this would come from your backend or WebSocket
+  //   // For demo purposes, we'll use a simple algorithm based on user ID
+  //   return userId % 2 === 0
+  // }
 
-  const messageGroups = groupMessagesByDate()
+  const messageGroups = groupMessagesByDate();
+
+  const ws = useAppSelector(selectWebSocket);
+
+  // once we have a WS and a non‑empty rooms list, re‑send "online"
+  useEffect(() => {
+    if (!ws || rooms.length === 0) return;
+
+    ws.send(
+      JSON.stringify({
+        type: "status",
+        payload: "online",
+      })
+    );
+  }, [ws, rooms]);
+
+  //OnlineStatus
+  const onlineUsers = useAppSelector(selectOnlineUsers);
+  const isUserOnline = (userId: number) =>
+    // always show yourself as online…
+    userId === authUser?.id ? true : onlineUsers.includes(userId);
 
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
@@ -311,7 +365,11 @@ export default function ChatPage() {
         <div className="p-4 border-b border-[#D1D5DB] flex items-center justify-between h-[5rem]">
           <div className="flex items-center">
             <h1 className="font-bold text-[#111827]">Chat App</h1>
-            {currentUser && <span className="ml-2 text-sm text-[#6B7280]">{currentUser.username}</span>}
+            {currentUser && (
+              <span className="ml-2 text-sm text-[#6B7280]">
+                {currentUser.username}
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-1">
             <Button
@@ -350,12 +408,18 @@ export default function ChatPage() {
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>Create New Room</DialogTitle>
-                <DialogDescription>Create a new chat room or direct message.</DialogDescription>
+                <DialogDescription>
+                  Create a new chat room or direct message.
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label className="text-right">Type</Label>
-                  <RadioGroup value={newRoomType} onValueChange={setNewRoomType} className="col-span-3 flex space-x-4">
+                  <RadioGroup
+                    value={newRoomType}
+                    onValueChange={setNewRoomType}
+                    className="col-span-3 flex space-x-4"
+                  >
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="group" id="group" />
                       <Label htmlFor="group" className="flex items-center">
@@ -423,7 +487,9 @@ export default function ChatPage() {
             <button
               key={room.room.id}
               className={`w-full text-left px-4 py-2 flex items-center justify-between ${
-                activeRoomId === room.room.id ? "bg-[#E0F2FE] text-[#3B82F6]" : "hover:bg-gray-50 text-[#111827]"
+                activeRoomId === room.room.id
+                  ? "bg-[#E0F2FE] text-[#3B82F6]"
+                  : "hover:bg-gray-50 text-[#111827]"
               }`}
               onClick={() => handleRoomChange(room.room.id)}
             >
@@ -435,10 +501,16 @@ export default function ChatPage() {
                       {/* Online status indicator for direct messages */}
                       {room.room.users &&
                         room.room.users.length > 0 &&
-                        room.room.users.some((user) => user.id !== authUser?.id) && (
+                        room.room.users.some(
+                          (user) => user.id !== authUser?.id
+                        ) && (
                           <span
                             className={`absolute bottom-0 right-1 h-2 w-2 rounded-full ${
-                              isUserOnline(room.room.users.find((user) => user.id !== authUser?.id)?.id || 0)
+                              isUserOnline(
+                                room.room.users.find(
+                                  (user) => user.id !== authUser?.id
+                                )?.id || 0
+                              )
                                 ? "bg-green-500"
                                 : "bg-gray-400"
                             }`}
@@ -453,13 +525,17 @@ export default function ChatPage() {
                     <span>{room.room.name}</span>
                     {/* Show member count for group chats */}
                     {room.room.users && (
-                      <span className="ml-2 text-xs text-gray-500">{room.room.users.length} คน</span>
+                      <span className="ml-2 text-xs text-gray-500">
+                        {room.room.users.length} คน
+                      </span>
                     )}
                   </>
                 )}
               </div>
               {room.unreadCount > 0 && (
-                <span className="bg-[#3B82F6] text-white text-xs px-2 py-0.5 rounded-full">{room.unreadCount}</span>
+                <span className="bg-[#3B82F6] text-white text-xs px-2 py-0.5 rounded-full">
+                  {room.unreadCount}
+                </span>
               )}
             </button>
           ))}
@@ -495,7 +571,11 @@ export default function ChatPage() {
                           <span className="flex-grow">{user.username}</span>
                           {/* Show online status for users */}
                           <span
-                            className={`h-2 w-2 rounded-full ${isUserOnline(user.id) ? "bg-green-500" : "bg-gray-400"}`}
+                            className={`h-2 w-2 rounded-full ${
+                              isUserOnline(user.id)
+                                ? "bg-green-500"
+                                : "bg-gray-400"
+                            }`}
                           />
                         </div>
                       ))}
@@ -503,7 +583,12 @@ export default function ChatPage() {
 
                     {/* Leave group button for group chats */}
                     {activeRoomData.room.type === "group" && (
-                      <Button variant="destructive" size="sm" className="w-full mt-2" onClick={handleLeaveGroup}>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-full mt-2"
+                        onClick={handleLeaveGroup}
+                      >
                         <LeaveIcon size={14} className="mr-1" />
                         Leave Group
                       </Button>
@@ -532,17 +617,28 @@ export default function ChatPage() {
 
             {/* Invite button for group chats */}
             {activeRoomData?.room.type === "group" && (
-              <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+              <Dialog
+                open={isInviteDialogOpen}
+                onOpenChange={setIsInviteDialogOpen}
+              >
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex items-center gap-1 ml-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1 ml-2"
+                  >
                     <UserPlus size={14} />
                     <span>Invite</span>
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
                   <DialogHeader>
-                    <DialogTitle>Invite to {activeRoomData.room.name}</DialogTitle>
-                    <DialogDescription>Add users to this group chat.</DialogDescription>
+                    <DialogTitle>
+                      Invite to {activeRoomData.room.name}
+                    </DialogTitle>
+                    <DialogDescription>
+                      Add users to this group chat.
+                    </DialogDescription>
                   </DialogHeader>
 
                   <div className="space-y-4 py-4">
@@ -550,9 +646,16 @@ export default function ChatPage() {
                     {selectedUsers.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {selectedUsers.map((user) => (
-                          <Badge key={user} variant="secondary" className="flex items-center gap-1 px-3 py-1">
+                          <Badge
+                            key={user}
+                            variant="secondary"
+                            className="flex items-center gap-1 px-3 py-1"
+                          >
                             {user}
-                            <button onClick={() => handleRemoveUser(user)} className="ml-1">
+                            <button
+                              onClick={() => handleRemoveUser(user)}
+                              className="ml-1"
+                            >
                               <X size={14} />
                             </button>
                           </Badge>
@@ -562,7 +665,11 @@ export default function ChatPage() {
 
                     {/* Search input */}
                     <div className="flex items-center gap-2">
-                      <Input placeholder="Search users..." value={searchTerm} onChange={handleSearchTermChange} />
+                      <Input
+                        placeholder="Search users..."
+                        value={searchTerm}
+                        onChange={handleSearchTermChange}
+                      />
                     </div>
 
                     {/* User list */}
@@ -584,7 +691,9 @@ export default function ChatPage() {
                         ))
                       ) : (
                         <div className="px-3 py-2 text-[#6B7280]">
-                          {searchTerm ? "No users found" : "Type to search users"}
+                          {searchTerm
+                            ? "No users found"
+                            : "Type to search users"}
                         </div>
                       )}
                     </div>
@@ -606,7 +715,10 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+          ref={chatContainerRef}
+        >
           {messageGroups.map((group, groupIndex) => (
             <div key={group.date} className="space-y-4">
               {/* Date Divider */}
@@ -622,7 +734,9 @@ export default function ChatPage() {
               {group.messages.map((msg, msgIndex) => {
                 // Check if this message is the first unread message
                 const isFirstUnread =
-                  msgIndex > 0 && !isMessageUnread(group.messages[msgIndex - 1]) && isMessageUnread(msg)
+                  msgIndex > 0 &&
+                  !isMessageUnread(group.messages[msgIndex - 1]) &&
+                  isMessageUnread(msg);
 
                 return (
                   <React.Fragment key={msg.id}>
@@ -630,15 +744,27 @@ export default function ChatPage() {
                     {isFirstUnread && (
                       <div className="relative flex items-center py-2">
                         <div className="flex-grow border-t border-red-500"></div>
-                        <span className="flex-shrink mx-4 text-xs text-red-500 bg-[#F9FAFB] px-2 font-medium">ใหม่</span>
+                        <span className="flex-shrink mx-4 text-xs text-red-500 bg-[#F9FAFB] px-2 font-medium">
+                          ใหม่
+                        </span>
                         <div className="flex-grow border-t border-red-500"></div>
                       </div>
                     )}
 
                     {/* Message */}
-                    <div className={`flex ${msg.user_id == authUser?.id ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`flex ${
+                        msg.user_id == authUser?.id
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
                       <div
-                        className={`flex max-w-[70%] ${msg.user_id == authUser?.id ? "flex-row-reverse" : "flex-row"}`}
+                        className={`flex max-w-[70%] ${
+                          msg.user_id == authUser?.id
+                            ? "flex-row-reverse"
+                            : "flex-row"
+                        }`}
                       >
                         {!(msg.user_id == authUser?.id) && (
                           <Avatar className="h-8 w-8 mr-2">
@@ -656,20 +782,29 @@ export default function ChatPage() {
                             }`}
                           >
                             {!(msg.user_id == authUser?.id) && (
-                              <div className="font-medium text-sm text-[#6366F1] mb-1">{msg.user.username}</div>
+                              <div className="font-medium text-sm text-[#6366F1] mb-1">
+                                {msg.user.username}
+                              </div>
                             )}
                             <p>{msg.content}</p>
                           </div>
                           <div
-                            className={`text-xs text-[#6B7280] mt-1 ${msg.user_id == authUser?.id ? "text-right" : "text-left"}`}
+                            className={`text-xs text-[#6B7280] mt-1 ${
+                              msg.user_id == authUser?.id
+                                ? "text-right"
+                                : "text-left"
+                            }`}
                           >
-                            {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </div>
                         </div>
                       </div>
                     </div>
                   </React.Fragment>
-                )
+                );
               })}
             </div>
           ))}
@@ -695,5 +830,5 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

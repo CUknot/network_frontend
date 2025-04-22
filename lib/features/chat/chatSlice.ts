@@ -48,6 +48,7 @@ interface ChatState {
   connected: boolean;
   connecting: boolean;
   activeRoom: number | null;
+  onlineUsers: number[];
 }
 
 const initialState: ChatState = {
@@ -59,6 +60,7 @@ const initialState: ChatState = {
   connected: false,
   connecting: false,
   activeRoom: null,
+  onlineUsers: [],
 };
 
 // GET /rooms
@@ -184,6 +186,14 @@ const createWebSocketConnection = (
   ws.onopen = () => {
     console.log("WebSocket connected");
     dispatch(setConnected(true));
+
+    // tell the server we're online
+    ws.send(JSON.stringify({ type: "status", payload: "online" }));
+
+    // report offline when tab/window closes
+    window.addEventListener("beforeunload", () => {
+      ws.send(JSON.stringify({ type: "status", payload: "offline" }));
+    });
   };
 
   ws.onmessage = (event) => {
@@ -228,6 +238,22 @@ const chatSlice = createSlice({
     handleIncomingMessage(state, action: PayloadAction<any>) {
       const message = action.payload;
       const currentUserId = (state as any).auth?.user?.id;
+
+      if (message.type === "status_update" && message.payload) {
+        const { user_id, status } = message.payload as {
+          user_id: number;
+          status: string;
+        };
+
+        if (status === "online") {
+          if (!state.onlineUsers.includes(user_id)) {
+            state.onlineUsers.push(user_id);
+          }
+        } else if (status === "offline") {
+          state.onlineUsers = state.onlineUsers.filter((id) => id !== user_id);
+        }
+        return;
+      }
 
       // Handle the incoming message based on its type
       if (message.type === "message" && message.payload) {
@@ -429,6 +455,8 @@ export const selectActiveRoom = (state: RootState) => state.chat.activeRoom;
 export const selectIsConnected = (state: RootState) => state.chat.connected;
 export const selectIsConnecting = (state: RootState) => state.chat.connecting;
 export const selectError = (state: RootState) => state.chat.error;
+export const selectOnlineUsers = (state: RootState) => state.chat.onlineUsers;
+export const selectWebSocket = (state: RootState) => state.chat.ws;
 
 export const selectMessagesForRoom = createSelector(
   [selectMessages, selectActiveRoom],
