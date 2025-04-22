@@ -1,48 +1,53 @@
-import { createSlice, createAsyncThunk, type PayloadAction, createSelector } from '@reduxjs/toolkit'
-import type { RootState } from '@/lib/store'
-import apiClient from "@/lib/axios"
+import {
+  createSlice,
+  createAsyncThunk,
+  type PayloadAction,
+  createSelector,
+} from "@reduxjs/toolkit";
+import type { RootState } from "@/lib/store";
+import apiClient from "@/lib/axios";
 
 interface User {
-  id: number
-  username: string
-  email: string
+  id: number;
+  username: string;
+  email: string;
 }
 
 interface Room {
-  id: number
-  name: string
-  type: 'direct' | 'group'
-  created_by: number
-  created_at: string
-  updated_at: string
-  users: User[]
+  id: number;
+  name: string;
+  type: "direct" | "group";
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  users: User[];
 }
 
 interface Message {
-  id: number
-  content: string
-  room_id: number
-  user_id: number
-  user: User
-  created_at: string
-  updated_at: string
+  id: number;
+  content: string;
+  room_id: number;
+  user_id: number;
+  user: User;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RoomWithMeta {
-  lastReadAt: string
-  room: Room
-  unreadCount: number
+  lastReadAt: string;
+  room: Room;
+  unreadCount: number;
 }
 
 interface ChatState {
-  rooms: RoomWithMeta[]
-  messages: Message[]
-  isLoading: boolean
-  error: string | null
-  ws: WebSocket | null
-  connected: boolean
-  connecting: boolean
-  activeRoom: number | null
+  rooms: RoomWithMeta[];
+  messages: Message[];
+  isLoading: boolean;
+  error: string | null;
+  ws: WebSocket | null;
+  connected: boolean;
+  connecting: boolean;
+  activeRoom: number | null;
 }
 
 const initialState: ChatState = {
@@ -54,161 +59,206 @@ const initialState: ChatState = {
   connected: false,
   connecting: false,
   activeRoom: null,
-}
+};
 
 // GET /rooms
-export const getRooms = createAsyncThunk('chat/getRooms', async (_, { dispatch, rejectWithValue }) => {
-  try {
-    const res = await apiClient.get('/rooms');
-    const roomsWithMeta = res.data.rooms as RoomWithMeta[];
-
-    // Dispatch joinRoom for each room's ID after successfully fetching the rooms
-    roomsWithMeta.forEach(room => {
-      dispatch(joinRoom(room.room.id.toString()));
-    });
-
-    return roomsWithMeta; // Return the rooms data to update the state
-  } catch (err: any) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to fetch rooms');
-  }
-});
-
-// POST /rooms
-export const createRoom = createAsyncThunk(
-  'chat/createRoom',
-  async (
-    { name, type, user_ids }: { name: string; type: 'direct' | 'group'; user_ids: number[] },
-    { rejectWithValue }
-  ) => {
+export const getRooms = createAsyncThunk(
+  "chat/getRooms",
+  async (_, { dispatch, rejectWithValue }) => {
     try {
-      const res = await apiClient.post('/rooms', { name, type, user_ids })
-      return res.data.room as Room
+      const res = await apiClient.get("/rooms");
+      const roomsWithMeta = res.data.rooms as RoomWithMeta[];
+
+      // Dispatch joinRoom for each room's ID after successfully fetching the rooms
+      roomsWithMeta.forEach((room) => {
+        dispatch(joinRoom(room.room.id.toString()));
+      });
+
+      return roomsWithMeta; // Return the rooms data to update the state
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to create room')
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch rooms"
+      );
     }
   }
-)
+);
+
+// POST /rooms
+// lib/features/chat/chatSlice.ts
+
+export const createRoom = createAsyncThunk(
+  "chat/createRoom",
+  async (
+    {
+      name,
+      type,
+      user_ids,
+    }: { name: string; type: "direct" | "group"; user_ids: number[] },
+    { dispatch, rejectWithValue }
+  ) => {
+    try {
+      const res = await apiClient.post("/rooms", { name, type, user_ids });
+      const room = res.data.room as Room;
+
+      // 1) subscribe your WS client to this room:
+      dispatch(joinRoom(room.id.toString()));
+
+      // 2) re-fetch all rooms (this list comes back with room.users populated,
+      //    so you’ll immediately see yourself in the new room’s users[])
+      dispatch(getRooms());
+
+      return room;
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to create room"
+      );
+    }
+  }
+);
 
 // GET /messages?room_id=1
 export const getMessages = createAsyncThunk(
-  'chat/getMessages',
+  "chat/getMessages",
   async (room_id: number, { rejectWithValue }) => {
     try {
-      const res = await apiClient.get(`/messages?room_id=${room_id}`)
-      console.log('Messages:', res.data.messages)
-      return res.data.messages as Message[]
+      const res = await apiClient.get(`/messages?room_id=${room_id}`);
+      console.log("Messages:", res.data.messages);
+      return res.data.messages as Message[];
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch messages')
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch messages"
+      );
     }
   }
-)
+);
 
 // POST /rooms/set-activate-room
 export const setActivateRoom = createAsyncThunk(
-  'chat/setActivateRoom',
+  "chat/setActivateRoom",
   async (room_id: number, { dispatch, rejectWithValue }) => {
-    dispatch(setActiveRoom(room_id)) // ✅ dispatch properly here
+    dispatch(setActiveRoom(room_id)); // ✅ dispatch properly here
     dispatch(resetUnreadCount(room_id)); // Reset unread count when room is activated
     try {
-      const res = await apiClient.post('/rooms/set-activate-room', { room_id })
-      return res.data.room as Room
+      const res = await apiClient.post("/rooms/set-activate-room", { room_id });
+      return res.data.room as Room;
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to set active room')
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to set active room"
+      );
     }
   }
-)
+);
 
 // Leave group thunk
-export const leaveGroup = createAsyncThunk("chat/leaveGroup", async (roomId: number, { rejectWithValue }) => {
-  try {
-    const res = await apiClient.post(`/rooms/${roomId}/leave`)
-    return roomId
-  } catch (err: any) {
-    return rejectWithValue(err.response?.data?.message || "Failed to leave group")
+export const leaveGroup = createAsyncThunk(
+  "chat/leaveGroup",
+  async (roomId: number, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post(`/rooms/${roomId}/leave`);
+      return roomId;
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to leave group"
+      );
+    }
   }
-})
+);
 
 // Setup WebSocket connection
-const createWebSocketConnection = (dispatch: any, getState: () => RootState) => {
+const createWebSocketConnection = (
+  dispatch: any,
+  getState: () => RootState
+) => {
   const user_id = getState().auth.user?.id;
   if (!user_id) {
-    console.error('User ID not found in state. Cannot establish WebSocket connection.')
-    return null
+    console.error(
+      "User ID not found in state. Cannot establish WebSocket connection."
+    );
+    return null;
   }
-  const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WS_URL}?user_id=${user_id}`);
+  const ws = new WebSocket(
+    `${process.env.NEXT_PUBLIC_WS_URL}?user_id=${user_id}`
+  );
 
   // Set up WebSocket event handlers
   ws.onopen = () => {
-    console.log('WebSocket connected')
-    dispatch(setConnected(true))
-  }
+    console.log("WebSocket connected");
+    dispatch(setConnected(true));
+  };
 
   ws.onmessage = (event) => {
-    const message = JSON.parse(event.data)
+    const message = JSON.parse(event.data);
     // Handle incoming WebSocket message (for example, updates on rooms or messages)
-    dispatch(handleIncomingMessage(message))
-  }
+    dispatch(handleIncomingMessage(message));
+  };
 
   ws.onerror = (error) => {
-    console.error('WebSocket error', error)
-  }
+    console.error("WebSocket error", error);
+  };
 
   ws.onclose = () => {
-    console.log('WebSocket disconnected')
-  }
+    console.log("WebSocket disconnected");
+  };
 
-  return ws
-}
+  return ws;
+};
 
 const chatSlice = createSlice({
-  name: 'chat',
+  name: "chat",
   initialState,
   reducers: {
     clearChatError(state) {
-      state.error = null
+      state.error = null;
     },
     clearMessages(state) {
-      state.messages = []
+      state.messages = [];
     },
     setWebSocket(state, action: PayloadAction<WebSocket>) {
-      state.ws = action.payload
+      state.ws = action.payload;
     },
     setActiveRoom(state, action: PayloadAction<number>) {
-      state.activeRoom = action.payload
+      state.activeRoom = action.payload;
     },
     setConnecting(state, action: PayloadAction<boolean>) {
-      state.connecting = action.payload
+      state.connecting = action.payload;
     },
     setConnected(state, action: PayloadAction<boolean>) {
-      state.connected = action.payload
+      state.connected = action.payload;
     },
     handleIncomingMessage(state, action: PayloadAction<any>) {
-      const message = action.payload
-      const currentUserId = (state as any).auth?.user?.id; 
+      const message = action.payload;
+      const currentUserId = (state as any).auth?.user?.id;
 
       // Handle the incoming message based on its type
-      if (message.type === 'message' && message.payload) {
+      if (message.type === "message" && message.payload) {
         const newMessage = message.payload as Message;
         state.messages.push(newMessage);
 
         // Increment unread count for the room if the message is not from the current user
-        if (newMessage.room_id && newMessage.user_id !== currentUserId && state.activeRoom !== newMessage.room_id) {
-          state.rooms = state.rooms.map(roomWithMeta => {
+        if (
+          newMessage.room_id &&
+          newMessage.user_id !== currentUserId &&
+          state.activeRoom !== newMessage.room_id
+        ) {
+          state.rooms = state.rooms.map((roomWithMeta) => {
             if (roomWithMeta.room.id === newMessage.room_id) {
-              return { ...roomWithMeta, unreadCount: roomWithMeta.unreadCount + 1 };
+              return {
+                ...roomWithMeta,
+                unreadCount: roomWithMeta.unreadCount + 1,
+              };
             }
             return roomWithMeta;
           });
         }
       } else {
         // Handle other types of messages (e.g., system messages, notifications, etc.)
-        console.log('System message or other message type', message)
+        console.log("System message or other message type", message);
       }
-      console.log('Incoming message', action.payload)
+      console.log("Incoming message", action.payload);
     },
     resetUnreadCount(state, action: PayloadAction<number>) {
       const roomId = action.payload;
-      state.rooms = state.rooms.map(roomWithMeta => {
+      state.rooms = state.rooms.map((roomWithMeta) => {
         if (roomWithMeta.room.id === roomId) {
           return { ...roomWithMeta, unreadCount: 0 };
         }
@@ -219,139 +269,174 @@ const chatSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(getRooms.pending, (state) => {
-        state.isLoading = true
-        state.error = null
+        state.isLoading = true;
+        state.error = null;
       })
-      .addCase(getRooms.fulfilled, (state, action: PayloadAction<RoomWithMeta[]>) => {
-        state.isLoading = false
-        state.rooms = action.payload
-      })
+      .addCase(
+        getRooms.fulfilled,
+        (state, action: PayloadAction<RoomWithMeta[]>) => {
+          state.isLoading = false;
+          state.rooms = action.payload;
+        }
+      )
       .addCase(getRooms.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload as string
+        state.isLoading = false;
+        state.error = action.payload as string;
       })
 
       .addCase(createRoom.pending, (state) => {
-        state.isLoading = true
-        state.error = null
+        state.isLoading = true;
+        state.error = null;
       })
       .addCase(createRoom.fulfilled, (state, action: PayloadAction<Room>) => {
-        state.isLoading = false
-        state.rooms.push({ lastReadAt: new Date().toISOString(), room: action.payload, unreadCount: 0 })
+        state.isLoading = false;
+        state.rooms.push({
+          lastReadAt: new Date().toISOString(),
+          room: action.payload,
+          unreadCount: 0,
+        });
       })
       .addCase(createRoom.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload as string
+        state.isLoading = false;
+        state.error = action.payload as string;
       })
 
       .addCase(getMessages.pending, (state) => {
-        state.isLoading = true
-        state.error = null
+        state.isLoading = true;
+        state.error = null;
       })
-      .addCase(getMessages.fulfilled, (state, action: PayloadAction<Message[]>) => {
-        state.isLoading = false
-        const newMessages = action.payload
+      .addCase(
+        getMessages.fulfilled,
+        (state, action: PayloadAction<Message[]>) => {
+          state.isLoading = false;
+          const newMessages = action.payload;
 
-        // Only add messages that aren't already in state.messages
-        const existingIds = new Set(state.messages.map(m => m.id))
-        const uniqueNewMessages = newMessages.filter(m => !existingIds.has(m.id))
+          // Only add messages that aren't already in state.messages
+          const existingIds = new Set(state.messages.map((m) => m.id));
+          const uniqueNewMessages = newMessages.filter(
+            (m) => !existingIds.has(m.id)
+          );
 
-        state.messages.push(...uniqueNewMessages)
-      })
+          state.messages.push(...uniqueNewMessages);
+        }
+      )
       .addCase(getMessages.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload as string
-      })
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
   },
-})
+});
 
-export const { clearChatError, clearMessages, setWebSocket, setActiveRoom,
-  setConnecting, setConnected, handleIncomingMessage, resetUnreadCount } = chatSlice.actions
+export const {
+  clearChatError,
+  clearMessages,
+  setWebSocket,
+  setActiveRoom,
+  setConnecting,
+  setConnected,
+  handleIncomingMessage,
+  resetUnreadCount,
+} = chatSlice.actions;
 
-  export const connectWebSocket = () => (dispatch: any, getState: () => RootState) => {
-    console.log('Connecting to WebSocket...')
+export const connectWebSocket =
+  () => (dispatch: any, getState: () => RootState) => {
+    console.log("Connecting to WebSocket...");
 
     // Access the WebSocket from the chat state
-    const { ws, connected, connecting } = getState().chat
+    const { ws, connected, connecting } = getState().chat;
 
-    console.log('WebSocket state:', ws)
-    console.log('Is connected:', connected)
-    console.log('Is connecting:', connecting)
+    console.log("WebSocket state:", ws);
+    console.log("Is connected:", connected);
+    console.log("Is connecting:", connecting);
 
     // Check if the WebSocket is already established
-    if (!ws && !connecting) { // Only create a new WebSocket if one is not already established
-      console.log('No WebSocket connection found. Creating a new one...')
+    if (!ws && !connecting) {
+      // Only create a new WebSocket if one is not already established
+      console.log("No WebSocket connection found. Creating a new one...");
 
-      dispatch(setConnecting(true)) // Set connecting to true while we establish the connection
+      dispatch(setConnecting(true)); // Set connecting to true while we establish the connection
 
-      const newWs = createWebSocketConnection(dispatch, getState)
+      const newWs = createWebSocketConnection(dispatch, getState);
 
       if (!newWs) {
-        console.error('Failed to create WebSocket connection')
-        dispatch(setConnecting(false)) // Set connecting to false on failure
-        return
+        console.error("Failed to create WebSocket connection");
+        dispatch(setConnecting(false)); // Set connecting to false on failure
+        return;
       }
 
-      dispatch(setWebSocket(newWs)) // Set the new WebSocket connection in the state
-      dispatch(setConnecting(false)) // Reset connecting state
+      dispatch(setWebSocket(newWs)); // Set the new WebSocket connection in the state
+      dispatch(setConnecting(false)); // Reset connecting state
     } else if (ws) {
-      console.log('WebSocket is already established.')
+      console.log("WebSocket is already established.");
     }
-  }
-
+  };
 
 // WebSocket actions (send messages)
 export const joinRoom = (roomId: string) => (dispatch: any, getState: any) => {
-  const { ws } = getState().chat
+  const { ws } = getState().chat;
   if (ws) {
-    ws.send(JSON.stringify({ type: 'join_room', payload: roomId }))
+    ws.send(JSON.stringify({ type: "join_room", payload: roomId }));
   }
-}
+};
 
-export const sendMessage = (roomId: number, content: string) => (dispatch: any, getState: any) => {
-  const { ws } = getState().chat
-  if (ws) {
-    ws.send(JSON.stringify({ type: 'message', payload: { room_id: roomId, content } }))
-  }
-}
+export const sendMessage =
+  (roomId: number, content: string) => (dispatch: any, getState: any) => {
+    const { ws } = getState().chat;
+    if (ws) {
+      ws.send(
+        JSON.stringify({
+          type: "message",
+          payload: { room_id: roomId, content },
+        })
+      );
+    }
+  };
 
-export const inviteUser = (roomId: number, username: string) => (dispatch: any, getState: any) => {
-  const { ws } = getState().chat
-  if (ws) {
-    ws.send(JSON.stringify({ type: 'invite_users', payload: { room_id: roomId, username } }))
-  }
-}
+export const inviteUser =
+  (roomId: number, username: string) => (dispatch: any, getState: any) => {
+    const { ws } = getState().chat;
+    if (ws) {
+      ws.send(
+        JSON.stringify({
+          type: "invite_users",
+          payload: { room_id: roomId, username },
+        })
+      );
+    }
+  };
 
-export const acceptInvite = (roomId: number) => (dispatch: any, getState: any) => {
-  const { ws } = getState().chat
-  if (ws) {
-    ws.send(JSON.stringify({ type: 'accept_invite', payload: roomId }))
-  }
-}
+export const acceptInvite =
+  (roomId: number) => (dispatch: any, getState: any) => {
+    const { ws } = getState().chat;
+    if (ws) {
+      ws.send(JSON.stringify({ type: "accept_invite", payload: roomId }));
+    }
+  };
 
-export const rejectInvite = (roomId: number) => (dispatch: any, getState: any) => {
-  const { ws } = getState().chat
-  if (ws) {
-    ws.send(JSON.stringify({ type: 'reject_invite', payload: roomId }))
-  }
-}
+export const rejectInvite =
+  (roomId: number) => (dispatch: any, getState: any) => {
+    const { ws } = getState().chat;
+    if (ws) {
+      ws.send(JSON.stringify({ type: "reject_invite", payload: roomId }));
+    }
+  };
 
-export const selectChat = (state: RootState) => state.chat
+export const selectChat = (state: RootState) => state.chat;
 
-export const selectRooms = (state: RootState) => state.chat.rooms
-export const selectMessages = (state: RootState) => state.chat.messages
-export const selectActiveRoom = (state: RootState) => state.chat.activeRoom
-export const selectIsConnected = (state: RootState) => state.chat.connected
-export const selectIsConnecting = (state: RootState) => state.chat.connecting
-export const selectError = (state: RootState) => state.chat.error
+export const selectRooms = (state: RootState) => state.chat.rooms;
+export const selectMessages = (state: RootState) => state.chat.messages;
+export const selectActiveRoom = (state: RootState) => state.chat.activeRoom;
+export const selectIsConnected = (state: RootState) => state.chat.connected;
+export const selectIsConnecting = (state: RootState) => state.chat.connecting;
+export const selectError = (state: RootState) => state.chat.error;
 
 export const selectMessagesForRoom = createSelector(
   [selectMessages, selectActiveRoom],
   (messages, activeRoom) => {
-    return messages.filter(msg => msg.room_id === activeRoom)
+    return messages.filter((msg) => msg.room_id === activeRoom);
   }
-)
+);
 export const selectActiveRoomData = (state: RootState) =>
-  state.chat.rooms.find((room) => room.room.id === state.chat.activeRoom)
+  state.chat.rooms.find((room) => room.room.id === state.chat.activeRoom);
 
-export default chatSlice.reducer
+export default chatSlice.reducer;
