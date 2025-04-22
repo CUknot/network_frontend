@@ -28,15 +28,33 @@ interface Message {
   content: string;
   room_id: number;
   user_id: number;
-  user: User;
+  user: User; // ← required
   created_at: string;
-  updated_at: string;
+  updated_at: string; // ← required
+  system?: boolean;
 }
 
 interface RoomWithMeta {
   lastReadAt: string;
   room: Room;
   unreadCount: number;
+}
+interface SystemPayload {
+  room_id: number;
+  user_id: number;
+  username: string;
+  action: "join" | "leave";
+  timestamp: string;
+}
+
+type ChatItem = Message | SystemMessage;
+
+interface SystemMessage {
+  id: number;
+  room_id: number;
+  content: string;
+  created_at: string;
+  system: true;
 }
 
 interface ChatState {
@@ -325,6 +343,32 @@ const chatSlice = createSlice({
         // Handle other types of messages (e.g., system messages, notifications, etc.)
         console.log("System message or other message type", message);
       }
+
+      if (message.type === "system" && message.payload) {
+        const p = message.payload as SystemPayload;
+
+        const systemMessage: Message = {
+          id: Date.now(),
+          room_id: p.room_id,
+          user_id: 0, // or choose a special “system” ID
+          user: {
+            // satisfy the required User
+            id: 0,
+            username: "System",
+            email: "",
+          },
+          content: `${p.username} has ${
+            p.action === "join" ? "joined" : "left"
+          } the room.`,
+          created_at: p.timestamp,
+          updated_at: p.timestamp, // mirror created_at
+          system: true,
+        };
+
+        state.messages.push(systemMessage);
+        return;
+      }
+
       console.log("Incoming message", action.payload);
     },
     resetUnreadCount(state, action: PayloadAction<number>) {
