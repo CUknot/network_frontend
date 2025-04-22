@@ -345,23 +345,35 @@ const chatSlice = createSlice({
       }
 
       if (message.type === "system" && message.payload) {
-        const p = message.payload as SystemPayload;
+        // Destructure exactly what your backend broadcasted
+        const {
+          id,
+          room_id,
+          user_id,
+          username,
+          content,
+          created_at,
+          updated_at,
+        } = message.payload as {
+          id: number;
+          room_id: number;
+          user_id: number;
+          username: string;
+          content: string;
+          created_at: string;
+          updated_at: string;
+          action: string;
+        };
 
         const systemMessage: Message = {
-          id: Date.now(),
-          room_id: p.room_id,
-          user_id: 0, // or choose a special “system” ID
-          user: {
-            // satisfy the required User
-            id: 0,
-            username: "System",
-            email: "",
-          },
-          content: `${p.username} has ${
-            p.action === "join" ? "joined" : "left"
-          } the room.`,
-          created_at: p.timestamp,
-          updated_at: p.timestamp, // mirror created_at
+          id,
+          room_id,
+          user_id,
+          // satisfy the required User field
+          user: { id: user_id, username, email: "" },
+          content,
+          created_at,
+          updated_at,
           system: true,
         };
 
@@ -428,10 +440,24 @@ const chatSlice = createSlice({
         (state, action: PayloadAction<Message[]>) => {
           state.isLoading = false;
           const existingIds = new Set(state.messages.map((m) => m.id));
-          const unique = action.payload.filter((m) => !existingIds.has(m.id));
+
+          // 1) map each message to possibly add system: true
+          const processed = action.payload.map((m) => ({
+            ...m,
+            system:
+              m.content.includes("has joined the room") ||
+              m.content.includes("has left the room") ||
+              false,
+          }));
+
+          // 2) only keep ones we haven't seen yet
+          const unique = processed.filter((m) => !existingIds.has(m.id));
+
+          // 3) append
           state.messages.push(...unique);
         }
       )
+
       .addCase(getMessages.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
