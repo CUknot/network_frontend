@@ -57,6 +57,9 @@ import {
   getMessages,
   leaveGroup,
   selectWebSocket,
+  getGroupRooms,
+  joinGroupRoom,
+  selectGroupRooms,
 } from "@/lib/features/chat/chatSlice";
 
 import {
@@ -80,6 +83,7 @@ export default function ChatPage() {
   const dispatch = useAppDispatch();
 
   // Redux state
+  const groupRooms = useAppSelector(selectGroupRooms);
   const rooms = useAppSelector(selectRooms);
   const activeRoomId = useAppSelector(selectActiveRoom);
   const activeRoomData = useAppSelector(selectActiveRoomData);
@@ -118,6 +122,7 @@ export default function ChatPage() {
     if (!authUser) return;
     dispatch(connectWebSocket());
     dispatch(getRooms());
+    dispatch(getGroupRooms());
     return;
   }, [dispatch, authUser]);
 
@@ -539,6 +544,32 @@ export default function ChatPage() {
               )}
             </button>
           ))}
+        </div>
+        <div className="mt-4 border-t border-gray-200 p-2">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">
+            Available Groups
+          </h3>
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {groupRooms
+              .filter((gr) => !rooms.some((rw) => rw.room.id === gr.id))
+              .map((gr) => (
+                <div
+                  key={gr.id}
+                  className="px-2 py-1 flex justify-between items-center hover:bg-gray-50 rounded"
+                >
+                  <span className="flex items-center">
+                    <MessageSquare size={16} className="mr-2" />
+                    {gr.name}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => dispatch(joinGroupRoom(gr.id))}
+                  >
+                    Join
+                  </Button>
+                </div>
+              ))}
+          </div>
         </div>
       </div>
 

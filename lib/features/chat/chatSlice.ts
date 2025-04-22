@@ -49,6 +49,7 @@ interface ChatState {
   connecting: boolean;
   activeRoom: number | null;
   onlineUsers: number[];
+  groupRooms: Room[];
 }
 
 const initialState: ChatState = {
@@ -61,6 +62,7 @@ const initialState: ChatState = {
   connecting: false,
   activeRoom: null,
   onlineUsers: [],
+  groupRooms: [],
 };
 
 // GET /rooms
@@ -146,6 +148,42 @@ export const setActivateRoom = createAsyncThunk(
     } catch (err: any) {
       return rejectWithValue(
         err.response?.data?.message || "Failed to set active room"
+      );
+    }
+  }
+);
+
+// Fetch *all* group‑type rooms
+export const getGroupRooms = createAsyncThunk(
+  "chat/getGroupRooms",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.get("/rooms/groups");
+
+      console.log(res);
+      return res.data.rooms as Room[]; // must match your backend payload
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch group rooms"
+      );
+    }
+  }
+);
+
+export const joinGroupRoom = createAsyncThunk(
+  "chat/joinGroupRoom",
+  async (roomId: number, { dispatch, rejectWithValue }) => {
+    try {
+      // 1) Persist membership
+      await apiClient.post(`/rooms/${roomId}/join`);
+      // 2) Subscribe WS so you start receiving messages
+      dispatch(joinRoom(roomId.toString()));
+      // 3) Refresh your joined rooms list
+      dispatch(getRooms());
+      return roomId;
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to join group"
       );
     }
   }
@@ -294,6 +332,7 @@ const chatSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // — getRooms (your joined rooms) —
       .addCase(getRooms.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -310,6 +349,7 @@ const chatSlice = createSlice({
         state.error = action.payload as string;
       })
 
+      // — createRoom —
       .addCase(createRoom.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -327,6 +367,7 @@ const chatSlice = createSlice({
         state.error = action.payload as string;
       })
 
+      // — getMessages —
       .addCase(getMessages.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -335,18 +376,46 @@ const chatSlice = createSlice({
         getMessages.fulfilled,
         (state, action: PayloadAction<Message[]>) => {
           state.isLoading = false;
-          const newMessages = action.payload;
-
-          // Only add messages that aren't already in state.messages
           const existingIds = new Set(state.messages.map((m) => m.id));
-          const uniqueNewMessages = newMessages.filter(
-            (m) => !existingIds.has(m.id)
-          );
-
-          state.messages.push(...uniqueNewMessages);
+          const unique = action.payload.filter((m) => !existingIds.has(m.id));
+          state.messages.push(...unique);
         }
       )
       .addCase(getMessages.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      })
+
+      // — getGroupRooms (all groups in system) —
+      .addCase(getGroupRooms.pending, (state) => {
+        // you might choose not to set isLoading here to avoid spinner clashes
+      })
+      .addCase(
+        getGroupRooms.fulfilled,
+        (state, action: PayloadAction<Room[]>) => {
+          state.groupRooms = action.payload;
+        }
+      )
+      .addCase(getGroupRooms.rejected, (state, action) => {
+        console.error("Failed to load group rooms:", action.payload);
+      })
+
+      // — joinGroupRoom (join a public group) —
+      .addCase(joinGroupRoom.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(
+        joinGroupRoom.fulfilled,
+        (state, action: PayloadAction<number>) => {
+          state.isLoading = false;
+          // remove the joined room from the public list
+          state.groupRooms = state.groupRooms.filter(
+            (r) => r.id !== action.payload
+          );
+        }
+      )
+      .addCase(joinGroupRoom.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
@@ -451,7 +520,6 @@ export const rejectInvite =
       ws.send(JSON.stringify({ type: "reject_invite", payload: roomId }));
     }
   };
-
 export const selectChat = (state: RootState) => state.chat;
 
 export const selectRooms = (state: RootState) => state.chat.rooms;
@@ -461,6 +529,7 @@ export const selectIsConnected = (state: RootState) => state.chat.connected;
 export const selectIsConnecting = (state: RootState) => state.chat.connecting;
 export const selectError = (state: RootState) => state.chat.error;
 export const selectOnlineUsers = (state: RootState) => state.chat.onlineUsers;
+export const selectGroupRooms = (state: RootState) => state.chat.groupRooms;
 export const selectWebSocket = (state: RootState) => state.chat.ws;
 
 export const selectMessagesForRoom = createSelector(
