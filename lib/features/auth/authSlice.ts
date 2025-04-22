@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/tool
 import type { RootState } from "@/lib/store"
 import apiClient from "@/lib/axios"
 
-interface User {
+export interface User {
   id: number
   username: string
   email: string

@@ -1,13 +1,23 @@
-"use client"
+"use client";
 
-import React from "react"
-
-import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { MessageSquare, Users, LogOut, UserPlus, X, Info, LeafIcon as LeaveIcon, Bell } from "lucide-react"
+import React from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  MessageSquare,
+  Users,
+  LogOut,
+  UserPlus,
+  X,
+  Info,
+  LeafIcon as LeaveIcon,
+  Bell,
+  UserIcon,
+  Plus,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,17 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Plus, UserIcon } from "lucide-react"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { format, isToday, isYesterday, parseISO } from "date-fns"
-import { th } from "date-fns/locale"
+} from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { th } from "date-fns/locale";
 
 // Import Redux hooks and actions
-import { useAppDispatch, useAppSelector } from "@/lib/hooks"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   connectWebSocket,
   sendMessage,
@@ -42,266 +51,281 @@ import {
   getRooms,
   getMessages,
   leaveGroup,
-} from "@/lib/features/chat/chatSlice"
+  Message as ChatMessage,
+} from "@/lib/features/chat/chatSlice";
 
-import { selectSearchUser, selectCurrentUser, searchUser } from "@/lib/features/user/userSlice"
-import { getPendingInvites } from "@/lib/features/invite/inviteSlice"
+import {
+  selectSearchUser,
+  selectCurrentUser,
+  searchUser,
+} from "@/lib/features/user/userSlice";
+import { getPendingInvites } from "@/lib/features/invite/inviteSlice";
 
 // Add these imports at the top of the file
-import { selectIsAuthenticated, selectUser } from "@/lib/features/auth/authSlice"
-
-// Import the logout action
-import { logout } from "@/lib/features/auth/authSlice"
+import {
+  selectIsAuthenticated,
+  selectUser,
+  logout,
+  User as AuthUser,
+} from "@/lib/features/auth/authSlice";
+import { User as CurrentUser } from "@/lib/features/user/userSlice";
 
 export default function ChatPage() {
-  const router = useRouter()
-  const dispatch = useAppDispatch()
+  const router = useRouter();
+  const dispatch = useAppDispatch();
 
   // Redux state
-  const rooms = useAppSelector(selectRooms)
-  const activeRoomId = useAppSelector(selectActiveRoom)
-  const activeRoomData = useAppSelector(selectActiveRoomData)
-  const isConnected = useAppSelector(selectIsConnected)
-  const isConnecting = useAppSelector(selectIsConnecting)
+  const rooms = useAppSelector(selectRooms);
+  const activeRoomId = useAppSelector(selectActiveRoom);
+  const activeRoomData = useAppSelector(selectActiveRoomData);
+  const isConnected = useAppSelector(selectIsConnected);
+  const isConnecting = useAppSelector(selectIsConnecting);
 
   // Add these lines to get auth state
-  const isAuthenticated = useAppSelector(selectIsAuthenticated)
-  const authUser = useAppSelector(selectUser)
-  const currentUser = useAppSelector(selectCurrentUser)
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const authUser = useAppSelector(selectUser) as AuthUser | null;
+  const currentUser = useAppSelector(selectCurrentUser) as CurrentUser | null;
 
   // Add this effect to redirect if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push("/")
+      router.push("/");
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, router]);
 
   // Local state for UI
-  const [newMessage, setNewMessage] = useState("")
-  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false)
-  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
-  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false)
-  const [newRoomName, setNewRoomName] = useState("")
-  const [newRoomType, setNewRoomType] = useState("group")
-  const [directUsername, setDirectUsername] = useState("")
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [newMessage, setNewMessage] = useState("");
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomType, setNewRoomType] = useState("group");
+  const [directUsername, setDirectUsername] = useState("");
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Get messages for the active room
-  const messages = useAppSelector(selectMessagesForRoom)
+  const messages = useAppSelector(selectMessagesForRoom);
 
   // Connect to WebSocket
   useEffect(() => {
-    if (!authUser) return
-    dispatch(connectWebSocket())
-    dispatch(getRooms())
-    return
-  }, [dispatch, authUser])
+    if (!authUser) return;
+    dispatch(connectWebSocket());
+    dispatch(getRooms());
+    return;
+  }, [dispatch, authUser]);
 
   // Scroll to the bottom of the chat container when messages change
   useEffect(() => {
     if (messages.length > 0 && activeRoomId) {
-      const lastMessage = messages[messages.length - 1]
+      const lastMessage = messages[messages.length - 1];
       if (lastMessage.room_id === activeRoomId && chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
     }
-  }, [messages, activeRoomId])
+  }, [messages, activeRoomId]);
 
   // Filter users based on search term and exclude already selected users
-  const filteredUsers = useAppSelector(selectSearchUser)
+  const filteredUsers = useAppSelector(selectSearchUser);
 
   // Handle direct message validation
   const isValidDirectMessage = (): boolean => {
-    if (newRoomType !== "direct") return true
-    return directUsername.trim() !== ""
-  }
+    if (newRoomType !== "direct") return true;
+    return directUsername.trim() !== "";
+  };
 
   // Handle group validation
   const isValidGroup = () => {
-    if (newRoomType !== "group") return true
-    return newRoomName.trim() !== ""
-  }
+    if (newRoomType !== "group") return true;
+    return newRoomName.trim() !== "";
+  };
 
   // Reset form when room type changes
   useEffect(() => {
     if (newRoomType === "direct") {
-      setNewRoomName("")
+      setNewRoomName("");
     } else {
-      setDirectUsername("")
+      setDirectUsername("");
     }
-  }, [newRoomType])
+  }, [newRoomType]);
 
   // Handle creating a new room
   const handleCreateRoom = () => {
-    if (!isValidDirectMessage() || !isValidGroup()) return
+    if (!isValidDirectMessage() || !isValidGroup()) return;
 
-    if (newRoomType === "direct") {
+    const currentUserId = authUser?.id;
+
+    if (newRoomType === "direct" && currentUserId) {
       // For direct messages
       dispatch(
         createRoom({
           name: directUsername,
           type: "direct",
-          user_ids: [], // Add the current user's ID
+          user_ids: [currentUserId], // Add the current user's ID
         }),
-      )
-    } else {
+      );
+    } else if (newRoomType === "group") {
       // For groups
       dispatch(
         createRoom({
           name: newRoomName,
           type: "group",
-          user_ids: [], // Add user IDs if needed
+          user_ids: [currentUserId].filter(Boolean) as number[], // Add current user ID if available
         }),
-      )
+      );
     }
 
     // Reset form
-    setNewRoomName("")
-    setNewRoomType("group")
-    setDirectUsername("")
-    setIsCreateRoomOpen(false)
-  }
+    setNewRoomName("");
+    setNewRoomType("group");
+    setDirectUsername("");
+    setIsCreateRoomOpen(false);
+  };
 
   // Handle inviting users to a group
   const handleInviteUsers = () => {
-    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group" || selectedUsers.length === 0) return
+    if (
+      !activeRoomId ||
+      !activeRoomData ||
+      activeRoomData.room.type !== "group" ||
+      selectedUsers.length === 0
+    )
+      return;
 
-    selectedUsers.map((user) => {
-      dispatch(inviteUser(activeRoomId, user))
-    })
+    selectedUsers.forEach((user) => {
+      dispatch(inviteUser(activeRoomId, user));
+    });
 
-    setSelectedUsers([])
-    setIsInviteDialogOpen(false)
-  }
+    setSelectedUsers([]);
+    setIsInviteDialogOpen(false);
+  };
 
   // Handle selecting a user to invite
   const handleSelectUser = (user: string) => {
-    setSelectedUsers([...selectedUsers, user])
-    setSearchTerm("")
-  }
+    setSelectedUsers([...selectedUsers, user]);
+    setSearchTerm("");
+  };
 
   // Handle removing a selected user
   const handleRemoveUser = (user: string) => {
-    setSelectedUsers(selectedUsers.filter((u) => u !== user))
-  }
+    setSelectedUsers(selectedUsers.filter((u) => u !== user));
+  };
 
   // Handle search term change
   const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value
-    setSearchTerm(term)
+    const term = e.target.value;
+    setSearchTerm(term);
     if (term.trim()) {
-      console.log("Searching for users:", term.trim())
-      dispatch(searchUser(term.trim()))
+      console.log("Searching for users:", term.trim());
+      dispatch(searchUser(term.trim()));
     }
-  }
+  };
 
   // Handle sending a message
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    console.log("Sending message:", newMessage)
-    console.log("Active room ID:", activeRoomId)
-    if (!newMessage.trim() || !activeRoomId) return
+    e.preventDefault();
+    console.log("Sending message:", newMessage);
+    console.log("Active room ID:", activeRoomId);
+    if (!newMessage.trim() || !activeRoomId) return;
 
-    dispatch(sendMessage(activeRoomId, newMessage))
-    setNewMessage("")
-  }
+    dispatch(sendMessage(activeRoomId, newMessage));
+    setNewMessage("");
+  };
 
   // Handle changing the active room
   const handleRoomChange = async (roomId: number) => {
-    console.log("Changing room to:", roomId)
-    await dispatch(setActivateRoom(roomId))
-    await dispatch(getMessages(roomId))
-    console.log(messages)
-  }
+    console.log("Changing room to:", roomId);
+    await dispatch(setActivateRoom(roomId));
+    await dispatch(getMessages(roomId));
+    console.log(messages);
+  };
 
   // Handle leaving a group
   const handleLeaveGroup = () => {
-    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group") return
+    if (!activeRoomId || !activeRoomData || activeRoomData.room.type !== "group")
+      return;
 
-    console.log("Leaving group:", activeRoomId)
-    dispatch(leaveGroup(activeRoomId))
-  }
+    console.log("Leaving group:", activeRoomId);
+    dispatch(leaveGroup(activeRoomId));
+  };
 
   // Handle navigating to pending invites
   const handleViewPendingInvites = () => {
-    console.log("Navigating to pending invites page")
-    router.push("/invite")
+    console.log("Navigating to pending invites page");
+    router.push("/invite");
 
     // For now, just log and fetch the pending invites
-    dispatch(getPendingInvites())
-  }
+    dispatch(getPendingInvites());
+  };
 
   // Then update the logout handler
   const handleLogout = () => {
-    dispatch(logout())
-    router.push("/")
-  }
+    dispatch(logout());
+    router.push("/");
+  };
 
   // Group messages by date
   const groupMessagesByDate = () => {
-    const groups: { date: string; messages: typeof messages }[] = []
-    let currentDate = ""
-    let currentGroup: typeof messages = []
+    const groups: { date: string; messages: ChatMessage[] }[] = [];
+    let currentDate = "";
+    let currentGroup: ChatMessage[] = [];
 
     messages.forEach((message) => {
-      const messageDate = message.created_at.split("T")[0] // Extract date part
+      const messageDate = message.created_at.split("T")[0]; // Extract date part
 
       if (messageDate !== currentDate) {
         if (currentGroup.length > 0) {
-          groups.push({ date: currentDate, messages: currentGroup })
+          groups.push({ date: currentDate, messages: currentGroup });
         }
-        currentDate = messageDate
-        currentGroup = [message]
+        currentDate = messageDate;
+        currentGroup = [message];
       } else {
-        currentGroup.push(message)
+        currentGroup.push(message);
       }
-    })
+    });
 
     if (currentGroup.length > 0) {
-      groups.push({ date: currentDate, messages: currentGroup })
+      groups.push({ date: currentDate, messages: currentGroup });
     }
 
-    return groups
-  }
+    return groups;
+  };
 
   // Format date for display
   const formatMessageDate = (dateString: string) => {
     try {
-      const date = parseISO(dateString)
+      const date = parseISO(dateString);
 
       if (isToday(date)) {
-        return "Today"
+        return "Today";
       } else if (isYesterday(date)) {
-        return "Yesterday"
+        return "Yesterday";
       } else {
-        return format(date, "dd MMMM yyyy", { locale: th })
+        return format(date, "dd MMMM yyyy", { locale: th });
       }
     } catch (error) {
-      return dateString
+      return dateString;
     }
-  }
+  };
 
   // Check if a message is unread based on lastReadAt timestamp
-  const isMessageUnread = (message: any) => {
-    if (!activeRoomData) return false
+  const isMessageUnread = (message: ChatMessage) => {
+    if (!activeRoomData?.lastReadAt) return true; // Consider all messages unread if lastReadAt is not available
 
-    const lastReadAt = activeRoomData.lastReadAt
-    if (!lastReadAt) return false
-
-    const messageCreatedAt = message.created_at
-    return new Date(messageCreatedAt) > new Date(lastReadAt)
-  }
+    const lastReadAt = activeRoomData.lastReadAt;
+    const messageCreatedAt = message.created_at;
+    return new Date(messageCreatedAt) > new Date(lastReadAt) && message.user_id !== authUser?.id;
+  };
 
   // Check if a user is online (for demo purposes, randomly determine status)
-  const isUserOnline = (userId: number) => {
+  const isUserOnline = (userId: number | undefined) => {
+    if (userId === undefined) return false;
     // In a real app, this would come from your backend or WebSocket
     // For demo purposes, we'll use a simple algorithm based on user ID
-    return userId % 2 === 0
-  }
+    return userId % 2 === 0;
+  };
 
-  const messageGroups = groupMessagesByDate()
+  const messageGroups = groupMessagesByDate();
 
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
@@ -608,7 +632,7 @@ export default function ChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
           {messageGroups.map((group, groupIndex) => (
-            <div key={group.date} className="space-y-4">
+            <div key={group.date + groupIndex} className="space-y-4">
               {/* Date Divider */}
               <div className="relative flex items-center py-2">
                 <div className="flex-grow border-t border-gray-300"></div>

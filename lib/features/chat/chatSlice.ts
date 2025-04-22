@@ -18,7 +18,7 @@ interface Room {
   users: User[]
 }
 
-interface Message {
+export interface Message {
   id: number
   content: string
   room_id: number
