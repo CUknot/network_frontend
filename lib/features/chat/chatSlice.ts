@@ -186,6 +186,7 @@ const chatSlice = createSlice({
       const message = action.payload
       const currentUserId = (state as any).auth?.user?.id; 
 
+      console.log('Incoming message:', message)
       // Handle the incoming message based on its type
       if (message.type === 'message' && message.payload) {
         const newMessage = message.payload as Message;
