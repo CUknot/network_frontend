@@ -260,9 +260,11 @@ const createWebSocketConnection = (
   };
 
   ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    // Handle incoming WebSocket message (for example, updates on rooms or messages)
-    dispatch(handleIncomingMessage(message));
+    // split on lines, ignore blanks
+    for (const line of event.data.split("\n").filter((l: any) => l.trim())) {
+      const message = JSON.parse(line);
+      dispatch(handleIncomingMessage(message));
+    }
   };
 
   ws.onerror = (error) => {
