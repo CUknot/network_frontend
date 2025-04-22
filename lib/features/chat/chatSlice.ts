@@ -190,19 +190,26 @@ export const joinGroupRoom = createAsyncThunk(
 );
 
 // Leave group thunk
-export const leaveGroup = createAsyncThunk(
-  "chat/leaveGroup",
-  async (roomId: number, { rejectWithValue }) => {
-    try {
-      const res = await apiClient.post(`/rooms/${roomId}/leave`);
-      return roomId;
-    } catch (err: any) {
-      return rejectWithValue(
-        err.response?.data?.message || "Failed to leave group"
-      );
-    }
+export const leaveGroup = createAsyncThunk<
+  number, // return value = roomId
+  number, // arg = roomId
+  { rejectValue: string }
+>("chat/leaveGroup", async (roomId, { dispatch, rejectWithValue }) => {
+  try {
+    // 1) hit your new leave-room API
+    await apiClient.post(`/rooms/${roomId}/leave`);
+    // 2) tell WS to drop you from that room channel
+    dispatch(leaveRoom(roomId.toString()));
+    // 3) refresh both your joined list and available groups
+    dispatch(getRooms());
+    dispatch(getGroupRooms());
+    return roomId;
+  } catch (err: any) {
+    return rejectWithValue(
+      err.response?.data?.message || "Failed to leave group"
+    );
   }
-);
+});
 
 // Setup WebSocket connection
 const createWebSocketConnection = (
@@ -400,6 +407,27 @@ const chatSlice = createSlice({
         console.error("Failed to load group rooms:", action.payload);
       })
 
+      .addCase(leaveGroup.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(leaveGroup.fulfilled, (state, action: PayloadAction<number>) => {
+        state.isLoading = false;
+        const leftRoomId = action.payload;
+
+        // Remove from joined rooms
+        state.rooms = state.rooms.filter((rw) => rw.room.id !== leftRoomId);
+
+        // If it was the active room, clear it
+        if (state.activeRoom === leftRoomId) {
+          state.activeRoom = null;
+        }
+      })
+      .addCase(leaveGroup.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      })
+
       // — joinGroupRoom (join a public group) —
       .addCase(joinGroupRoom.pending, (state) => {
         state.isLoading = true;
@@ -471,6 +499,12 @@ export const joinRoom = (roomId: string) => (dispatch: any, getState: any) => {
   const { ws } = getState().chat;
   if (ws) {
     ws.send(JSON.stringify({ type: "join_room", payload: roomId }));
+  }
+};
+export const leaveRoom = (roomId: string) => (dispatch: any, getState: any) => {
+  const { ws } = getState().chat;
+  if (ws) {
+    ws.send(JSON.stringify({ type: "leave_room", payload: roomId }));
   }
 };
 

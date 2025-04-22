@@ -60,6 +60,7 @@ import {
   getGroupRooms,
   joinGroupRoom,
   selectGroupRooms,
+  leaveRoom,
 } from "@/lib/features/chat/chatSlice";
 
 import {
@@ -250,19 +251,6 @@ export default function ChatPage() {
     console.log(messages);
   };
 
-  // Handle leaving a group
-  const handleLeaveGroup = () => {
-    if (
-      !activeRoomId ||
-      !activeRoomData ||
-      activeRoomData.room.type !== "group"
-    )
-      return;
-
-    console.log("Leaving group:", activeRoomId);
-    dispatch(leaveGroup(activeRoomId));
-  };
-
   // Handle navigating to pending invites
   const handleViewPendingInvites = () => {
     console.log("Navigating to pending invites page");
@@ -339,6 +327,10 @@ export default function ChatPage() {
   //   // For demo purposes, we'll use a simple algorithm based on user ID
   //   return userId % 2 === 0
   // }
+  const handleLeaveGroup = () => {
+    if (!activeRoomId) return;
+    dispatch(leaveGroup(activeRoomId));
+  };
 
   const messageGroups = groupMessagesByDate();
 
