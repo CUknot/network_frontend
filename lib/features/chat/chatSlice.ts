@@ -290,6 +290,11 @@ const chatSlice = createSlice({
       state.ws = action.payload;
     },
     setActiveRoom(state, action: PayloadAction<number>) {
+      const current = new Date().toISOString(); // or use whatever timestamp format you need
+      // Update last_read_time of the previously active room (if needed)
+      if (typeof state.activeRoom === 'number' && state.rooms[state.activeRoom]) {
+        state.rooms[state.activeRoom].lastReadAt = current;
+      }
       state.activeRoom = action.payload;
     },
     setConnecting(state, action: PayloadAction<boolean>) {

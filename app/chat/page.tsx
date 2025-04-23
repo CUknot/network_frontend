@@ -114,9 +114,11 @@ export default function ChatPage() {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const currentUserId = authUser?.id;
 
   // Get messages for the active room
   const messages = useAppSelector(selectMessagesForRoom);
+  const [memoizedMessageGroups, setMemoizedMessageGroups] = useState<ReturnType<typeof groupMessagesByDate>>([]);
 
   // Connect to WebSocket
   useEffect(() => {
@@ -127,16 +129,33 @@ export default function ChatPage() {
     return;
   }, [dispatch, authUser]);
 
-  // Scroll to the bottom of the chat container when messages change
   useEffect(() => {
-    if (messages.length > 0 && activeRoomId) {
+    if (messages.length > 0 && activeRoomId && chatContainerRef.current) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.room_id === activeRoomId && chatContainerRef.current) {
-        chatContainerRef.current.scrollTop =
-          chatContainerRef.current.scrollHeight;
+      if (lastMessage.room_id === activeRoomId) {
+        setTimeout(() => {
+          if(chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 50); // Adjust the delay (in milliseconds) as needed
       }
     }
   }, [messages, activeRoomId]);
+
+  useEffect(() => {
+    if (activeRoomData) {
+        setMemoizedMessageGroups(groupMessagesByDate());
+    } else {
+        setMemoizedMessageGroups([]); // Clear messages if no active room data
+    }
+}, [messages, activeRoomData]);
+
+const isMessageUnread = (message: any) => {
+  if (!activeRoomData?.lastReadAt) return false;
+  const lastReadAt = activeRoomData.lastReadAt;
+  const messageCreatedAt = message.created_at;
+  return new Date(messageCreatedAt) > new Date(lastReadAt) && currentUserId !== message.user_id;
+};
 
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser);
@@ -310,17 +329,6 @@ export default function ChatPage() {
     }
   };
 
-  // Check if a message is unread based on lastReadAt timestamp
-  const isMessageUnread = (message: any) => {
-    if (!activeRoomData) return false;
-
-    const lastReadAt = activeRoomData.lastReadAt;
-    if (!lastReadAt) return false;
-
-    const messageCreatedAt = message.created_at;
-    return new Date(messageCreatedAt) > new Date(lastReadAt);
-  };
-
   // Check if a user is online (for demo purposes, randomly determine status)
   // const isUserOnline = (userId: number) => {
   //   // In a real app, this would come from your backend or WebSocket
@@ -331,8 +339,6 @@ export default function ChatPage() {
     if (!activeRoomId) return;
     dispatch(leaveGroup(activeRoomId));
   };
-
-  const messageGroups = groupMessagesByDate();
 
   const ws = useAppSelector(selectWebSocket);
 
@@ -742,7 +748,7 @@ export default function ChatPage() {
           className="flex-1 overflow-y-auto p-4 space-y-4"
           ref={chatContainerRef}
         >
-          {messageGroups.map((group, groupIndex) => (
+          {memoizedMessageGroups.map((group, groupIndex) => (
             <div key={group.date + groupIndex} className="space-y-4">
               {/* Date Divider */}
               <div className="relative flex items-center py-2">
