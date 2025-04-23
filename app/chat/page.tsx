@@ -60,7 +60,6 @@ import {
   getGroupRooms,
   joinGroupRoom,
   selectGroupRooms,
-  leaveRoom,
 } from "@/lib/features/chat/chatSlice";
 
 import {
@@ -74,6 +73,7 @@ import { getPendingInvites } from "@/lib/features/invite/inviteSlice";
 import {
   selectIsAuthenticated,
   selectUser,
+  setUser,
 } from "@/lib/features/auth/authSlice";
 
 // Import the logout action
@@ -119,6 +119,14 @@ export default function ChatPage() {
   // Get messages for the active room
   const messages = useAppSelector(selectMessagesForRoom);
   const [memoizedMessageGroups, setMemoizedMessageGroups] = useState<ReturnType<typeof groupMessagesByDate>>([]);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user")
+    if (storedUser) {
+      const user = JSON.parse(storedUser)
+      dispatch(setUser(user)) // You’ll need to add this reducer
+    }
+  }, [])
 
   // Connect to WebSocket
   useEffect(() => {

@@ -15,15 +15,9 @@ interface AuthState {
   error: string | null
 }
 
-let parsedUser: User | null = null
-if (typeof window !== "undefined") {
-  const storedUser = localStorage.getItem("user")
-  parsedUser = storedUser ? JSON.parse(storedUser) : null
-}
-
 const initialState: AuthState = {
-  user: parsedUser,
-  isAuthenticated: !!parsedUser,
+  user: null,
+  isAuthenticated: false,
   isLoading: false,
   error: null,
 }
@@ -77,6 +71,10 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
+    setUser(state, action: PayloadAction<User>) {
+      state.user = action.payload
+      state.isAuthenticated = true
+    },
     logout(state) {
       state.user = null
       state.isAuthenticated = false
@@ -119,7 +117,7 @@ const authSlice = createSlice({
   },
 })
 
-export const { logout, clearError } = authSlice.actions
+export const { logout, clearError, setUser } = authSlice.actions
 
 // Export selectors
 export const selectUser = (state: RootState) => state.auth.user
