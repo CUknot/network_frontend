@@ -68,6 +68,7 @@ interface ChatState {
   activeRoom: number | null;
   onlineUsers: number[];
   groupRooms: Room[];
+  allUsers: User[];
 }
 
 const initialState: ChatState = {
@@ -81,6 +82,7 @@ const initialState: ChatState = {
   activeRoom: null,
   onlineUsers: [],
   groupRooms: [],
+  allUsers: [],
 };
 
 // GET /rooms
@@ -100,6 +102,22 @@ export const getRooms = createAsyncThunk(
     } catch (err: any) {
       return rejectWithValue(
         err.response?.data?.message || "Failed to fetch rooms"
+      );
+    }
+  }
+);
+
+// GET /api/users
+export const getAllUsers = createAsyncThunk<User[]>(
+  "chat/getAllUsers",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.get("/users?username=_");
+      console.log("Users:", res.data.users);
+      return res.data.users as User[];
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch users"
       );
     }
   }
@@ -292,7 +310,10 @@ const chatSlice = createSlice({
     setActiveRoom(state, action: PayloadAction<number>) {
       const current = new Date().toISOString(); // or use whatever timestamp format you need
       // Update last_read_time of the previously active room (if needed)
-      if (typeof state.activeRoom === 'number' && state.rooms[state.activeRoom]) {
+      if (
+        typeof state.activeRoom === "number" &&
+        state.rooms[state.activeRoom]
+      ) {
         state.rooms[state.activeRoom].lastReadAt = current;
       }
       state.activeRoom = action.payload;
@@ -492,6 +513,13 @@ const chatSlice = createSlice({
           );
         }
       )
+      .addCase(
+        getAllUsers.fulfilled,
+        (state, action: PayloadAction<User[]>) => {
+          state.allUsers = action.payload;
+        }
+      )
+
       .addCase(joinGroupRoom.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;

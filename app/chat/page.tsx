@@ -60,6 +60,8 @@ import {
   getGroupRooms,
   joinGroupRoom,
   selectGroupRooms,
+  leaveRoom,
+  getAllUsers,
 } from "@/lib/features/chat/chatSlice";
 
 import {
@@ -82,6 +84,9 @@ import { logout } from "@/lib/features/auth/authSlice";
 export default function ChatPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const [view, setView] = useState<"chat" | "online">("chat");
+  const onlineUserIds = useAppSelector(selectOnlineUsers);
+  const allUsers = useAppSelector((state) => state.chat.allUsers);
 
   // Redux state
   const groupRooms = useAppSelector(selectGroupRooms);
@@ -134,6 +139,7 @@ export default function ChatPage() {
     dispatch(connectWebSocket());
     dispatch(getRooms());
     dispatch(getGroupRooms());
+    dispatch(getAllUsers());
     return;
   }, [dispatch, authUser]);
 
@@ -142,8 +148,9 @@ export default function ChatPage() {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.room_id === activeRoomId) {
         setTimeout(() => {
-          if(chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop =
+              chatContainerRef.current.scrollHeight;
           }
         }, 50); // Adjust the delay (in milliseconds) as needed
       }
@@ -152,18 +159,21 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (activeRoomData) {
-        setMemoizedMessageGroups(groupMessagesByDate());
+      setMemoizedMessageGroups(groupMessagesByDate());
     } else {
-        setMemoizedMessageGroups([]); // Clear messages if no active room data
+      setMemoizedMessageGroups([]); // Clear messages if no active room data
     }
-}, [messages, activeRoomData]);
+  }, [messages, activeRoomData]);
 
-const isMessageUnread = (message: any) => {
-  if (!activeRoomData?.lastReadAt) return false;
-  const lastReadAt = activeRoomData.lastReadAt;
-  const messageCreatedAt = message.created_at;
-  return new Date(messageCreatedAt) > new Date(lastReadAt) && currentUserId !== message.user_id;
-};
+  const isMessageUnread = (message: any) => {
+    if (!activeRoomData?.lastReadAt) return false;
+    const lastReadAt = activeRoomData.lastReadAt;
+    const messageCreatedAt = message.created_at;
+    return (
+      new Date(messageCreatedAt) > new Date(lastReadAt) &&
+      currentUserId !== message.user_id
+    );
+  };
 
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser);
@@ -551,6 +561,24 @@ const isMessageUnread = (message: any) => {
             </button>
           ))}
         </div>
+        <ul className="p-4 space-y-2">
+          {allUsers.map((user) => {
+            const isOnline = onlineUserIds.includes(user.id);
+            const isCurrent = user.id === currentUserId; // assume you have currentUserId available
+
+            return (
+              <li key={user.id} className="flex items-center space-x-2">
+                <span className={`font-medium ${isCurrent ? "text-blue-600" : ""}`}>
+                  {user.username ?? `User #${user.id}`}
+                  {isCurrent && " (You)"}
+                </span>
+                {isOnline && (
+                  <span className="text-green-500 text-xs">● online</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
         <div className="mt-4 border-t border-gray-200 p-2">
           <h3 className="text-sm font-medium text-gray-600 mb-2">
             Available Groups
