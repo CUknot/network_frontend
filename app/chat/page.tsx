@@ -61,6 +61,7 @@ import {
   joinGroupRoom,
   selectGroupRooms,
   leaveRoom,
+  getAllUsers,
 } from "@/lib/features/chat/chatSlice";
 
 import {
@@ -82,6 +83,9 @@ import { logout } from "@/lib/features/auth/authSlice";
 export default function ChatPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const [view, setView] = useState<"chat" | "online">("chat");
+  const onlineUserIds = useAppSelector(selectOnlineUsers);
+  const allUsers = useAppSelector((state) => state.chat.allUsers);
 
   // Redux state
   const groupRooms = useAppSelector(selectGroupRooms);
@@ -118,7 +122,9 @@ export default function ChatPage() {
 
   // Get messages for the active room
   const messages = useAppSelector(selectMessagesForRoom);
-  const [memoizedMessageGroups, setMemoizedMessageGroups] = useState<ReturnType<typeof groupMessagesByDate>>([]);
+  const [memoizedMessageGroups, setMemoizedMessageGroups] = useState<
+    ReturnType<typeof groupMessagesByDate>
+  >([]);
 
   // Connect to WebSocket
   useEffect(() => {
@@ -126,6 +132,7 @@ export default function ChatPage() {
     dispatch(connectWebSocket());
     dispatch(getRooms());
     dispatch(getGroupRooms());
+    dispatch(getAllUsers());
     return;
   }, [dispatch, authUser]);
 
@@ -134,8 +141,9 @@ export default function ChatPage() {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.room_id === activeRoomId) {
         setTimeout(() => {
-          if(chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop =
+              chatContainerRef.current.scrollHeight;
           }
         }, 50); // Adjust the delay (in milliseconds) as needed
       }
@@ -144,18 +152,21 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (activeRoomData) {
-        setMemoizedMessageGroups(groupMessagesByDate());
+      setMemoizedMessageGroups(groupMessagesByDate());
     } else {
-        setMemoizedMessageGroups([]); // Clear messages if no active room data
+      setMemoizedMessageGroups([]); // Clear messages if no active room data
     }
-}, [messages, activeRoomData]);
+  }, [messages, activeRoomData]);
 
-const isMessageUnread = (message: any) => {
-  if (!activeRoomData?.lastReadAt) return false;
-  const lastReadAt = activeRoomData.lastReadAt;
-  const messageCreatedAt = message.created_at;
-  return new Date(messageCreatedAt) > new Date(lastReadAt) && currentUserId !== message.user_id;
-};
+  const isMessageUnread = (message: any) => {
+    if (!activeRoomData?.lastReadAt) return false;
+    const lastReadAt = activeRoomData.lastReadAt;
+    const messageCreatedAt = message.created_at;
+    return (
+      new Date(messageCreatedAt) > new Date(lastReadAt) &&
+      currentUserId !== message.user_id
+    );
+  };
 
   // Filter users based on search term and exclude already selected users
   const filteredUsers = useAppSelector(selectSearchUser);
@@ -542,6 +553,24 @@ const isMessageUnread = (message: any) => {
               )}
             </button>
           ))}
+        </div>
+        <div>
+          <ul className="p-4 space-y-2">
+            {onlineUserIds.length === 0 && (
+              <li className="text-gray-500">No one online</li>
+            )}
+            {onlineUserIds.map((uid) => {
+              const user = allUsers.find((u) => u.id === uid);
+              return (
+                <li key={uid} className="flex items-center space-x-2">
+                  <span className="font-medium">
+                    {user?.username ?? `User #${uid}`}
+                  </span>
+                  <span className="text-green-500 text-xs">● online</span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <div className="mt-4 border-t border-gray-200 p-2">
           <h3 className="text-sm font-medium text-gray-600 mb-2">
